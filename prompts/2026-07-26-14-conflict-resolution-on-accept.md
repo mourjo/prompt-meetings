@@ -1,0 +1,1 @@
+When a meeting is being accepted, check if any of my meetings are conflicting with this. If so, check if the conflicting meeting is originating from a calendar of a lower priority. If so, reject that meeting. If the conflict is coming from a calendar of the same priority or higher, do not allow the acceptance of this invite, return a 400.

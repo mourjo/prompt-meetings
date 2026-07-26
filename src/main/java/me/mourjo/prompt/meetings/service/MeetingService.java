@@ -138,16 +138,50 @@ public class MeetingService {
         invitationRepository.saveInvitation(meetingId, inviteeUsername);
     }
 
+    @Transactional
     public void acceptInvite(String xUsername, Long meetingId) {
-        if (!meetingRepository.existsById(meetingId)) {
-            throw new NotFoundException("Meeting not found with ID: " + meetingId);
-        }
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new NotFoundException("Meeting not found with ID: " + meetingId));
 
         String status = invitationRepository.getInvitationStatus(meetingId, xUsername)
                 .orElseThrow(() -> new ForbiddenException("Only an invited member can respond to an existing invitation"));
 
         if (!"PENDING".equalsIgnoreCase(status)) {
             throw new BadRequestException("Invitation is not in a pending state");
+        }
+
+        Double p = calendarRepository.getPriority(meeting.getCalendarName());
+        double newPriority = p != null ? p : 1.0;
+
+        ZoneId newZoneId = ZoneId.of(meeting.getTimezone());
+        ZonedDateTime newStart = meeting.getStartTime().atZone(newZoneId);
+        ZonedDateTime newEnd = meeting.getEndTime().atZone(newZoneId);
+
+        List<MeetingConflictCheck> existingMeetings = meetingRepository.findAcceptedMeetingsForConflictCheck(xUsername);
+        List<MeetingConflictCheck> conflictingMeetings = new ArrayList<>();
+
+        for (MeetingConflictCheck m : existingMeetings) {
+            if (m.id().equals(meetingId)) {
+                continue;
+            }
+            ZoneId extZoneId = ZoneId.of(m.timezone());
+            ZonedDateTime extStart = m.startTime().atZone(extZoneId);
+            ZonedDateTime extEnd = m.endTime().atZone(extZoneId);
+
+            if (extStart.isBefore(newEnd) && newStart.isBefore(extEnd)) {
+                conflictingMeetings.add(m);
+            }
+        }
+
+        for (MeetingConflictCheck m : conflictingMeetings) {
+            if (m.calendarPriority() >= newPriority) {
+                throw new BadRequestException("Conflict with meeting '" + m.title() + "' in calendar '" + m.calendarName() + "' (priority: " + m.calendarPriority() + " >= " + newPriority + ")");
+            }
+        }
+
+        // Reject lower priority conflicting meetings
+        for (MeetingConflictCheck m : conflictingMeetings) {
+            invitationRepository.updateStatus(m.id(), xUsername, "REJECTED");
         }
 
         invitationRepository.updateStatus(meetingId, xUsername, "ACCEPTED");

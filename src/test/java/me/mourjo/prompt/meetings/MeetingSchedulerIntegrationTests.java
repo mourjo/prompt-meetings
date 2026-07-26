@@ -338,5 +338,126 @@ public class MeetingSchedulerIntegrationTests {
                 .content(objectMapper.writeValueAsString(utcMeeting)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("Conflict with meeting")));
+
+        // 22. Conflict Resolution on Accept Invite:
+        // Create an initial meeting by Alice in 'low-priority' calendar (priority 2.0)
+        LocalDateTime acceptTestStart = LocalDateTime.of(2026, 10, 1, 10, 0);
+        LocalDateTime acceptTestEnd = LocalDateTime.of(2026, 10, 1, 11, 0);
+        CreateMeetingRequest bobLowMeeting = new CreateMeetingRequest("Bob Low Priority Meeting", acceptTestStart, acceptTestEnd, "Europe/Paris", "low-priority");
+        
+        String bobLowMeetingRes = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(bobLowMeeting)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long bobLowMeetingId = objectMapper.readTree(bobLowMeetingRes).get("id").asLong();
+
+        // Invite Bob to the low-priority meeting
+        mockMvc.perform(post("/meetings/" + bobLowMeetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("bob"))))
+                .andExpect(status().isCreated());
+
+        // Bob accepts the low-priority meeting (no conflict initially)
+        mockMvc.perform(post("/meetings/" + bobLowMeetingId + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk());
+
+        // Verify Bob's meeting status is ACCEPTED
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + bobLowMeetingId + ")].userStatus", contains("ACCEPTED")));
+
+        // Create a conflicting meeting in 'high-priority' calendar (priority 5.0)
+        CreateMeetingRequest bobHighMeeting = new CreateMeetingRequest("Bob High Priority Meeting", acceptTestStart, acceptTestEnd, "Europe/Paris", "high-priority");
+        String bobHighMeetingRes = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(bobHighMeeting)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long bobHighMeetingId = objectMapper.readTree(bobHighMeetingRes).get("id").asLong();
+
+        // Invite Bob to the high-priority meeting
+        mockMvc.perform(post("/meetings/" + bobHighMeetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("bob"))))
+                .andExpect(status().isCreated());
+
+        // Bob accepts the high-priority meeting -> this should succeed and reject his low-priority meeting
+        mockMvc.perform(post("/meetings/" + bobHighMeetingId + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk());
+
+        // Verify Bob's low priority meeting is now REJECTED, and high priority meeting is ACCEPTED
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + bobLowMeetingId + ")].userStatus", contains("REJECTED")))
+                .andExpect(jsonPath("$[?(@.id == " + bobHighMeetingId + ")].userStatus", contains("ACCEPTED")));
+
+        // Create User 'charlie'
+        CreateUserRequest createCharlie = new CreateUserRequest("charlie");
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createCharlie)))
+                .andExpect(status().isCreated());
+
+        // Create a conflicting meeting by Charlie in 'low-priority' calendar (priority 2.0)
+        CreateMeetingRequest bobAnotherLowMeeting = new CreateMeetingRequest("Bob Another Low Priority Meeting", acceptTestStart, acceptTestEnd, "Europe/Paris", "low-priority");
+        String bobAnotherLowMeetingRes = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "charlie")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(bobAnotherLowMeeting)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long bobAnotherLowMeetingId = objectMapper.readTree(bobAnotherLowMeetingRes).get("id").asLong();
+
+        // Invite Bob to the new low-priority meeting
+        mockMvc.perform(post("/meetings/" + bobAnotherLowMeetingId + "/invites")
+                .header("X-USERNAME", "charlie")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("bob"))))
+                .andExpect(status().isCreated());
+
+        // Bob attempts to accept the low-priority meeting -> should be blocked (400 Bad Request) because it conflicts with the high-priority meeting
+        mockMvc.perform(post("/meetings/" + bobAnotherLowMeetingId + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting")));
+
+        // Create User 'david'
+        CreateUserRequest createDavid = new CreateUserRequest("david");
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDavid)))
+                .andExpect(status().isCreated());
+
+        // Create a conflicting meeting by David in 'high-priority' calendar (priority 5.0)
+        CreateMeetingRequest bobAnotherHighMeeting = new CreateMeetingRequest("Bob Another High Priority Meeting", acceptTestStart, acceptTestEnd, "Europe/Paris", "high-priority");
+        String bobAnotherHighMeetingRes = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "david")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(bobAnotherHighMeeting)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long bobAnotherHighMeetingId = objectMapper.readTree(bobAnotherHighMeetingRes).get("id").asLong();
+
+        // Invite Bob to the new high-priority meeting
+        mockMvc.perform(post("/meetings/" + bobAnotherHighMeetingId + "/invites")
+                .header("X-USERNAME", "david")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("bob"))))
+                .andExpect(status().isCreated());
+
+        // Bob attempts to accept the high-priority meeting -> should be blocked (400 Bad Request) because it conflicts with another high-priority meeting
+        mockMvc.perform(post("/meetings/" + bobAnotherHighMeetingId + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting")));
     }
 }
