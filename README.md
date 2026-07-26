@@ -1,4 +1,4 @@
-# Prompt Meetings (letsmeet)
+# Prompt Meetings
 
 ## Goal
 The Prompt Meetings application is a meeting scheduler and coordination platform. It allows users to register, create and manage meetings, send invitations, track responses, and coordinate calendar schedules within an organization.

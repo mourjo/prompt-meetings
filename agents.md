@@ -1,9 +1,9 @@
 # Agent Instructions & Guidelines
 
-This document outlines the rules and methodologies that AI agents must follow when working on the `letsmeet` codebase.
+This document outlines the rules and methodologies that AI agents must follow when working on the `prompt-meetings` codebase.
 
 ## 1. Documentation & Plans
-- **Location:** Always write plans and specifications in the [docs/](file:///Users/mourjo/repos/letsmeet/docs) directory.
+- **Location:** Always write plans and specifications in the [docs/](file:///Users/mourjo/repos/prompt-meetings/docs) directory.
 - Always keep the readme file updated with what the application does, no need to write any endpoints here, explain the goal of the project and the capabilities and its entities
 
 ## 2. Development Methodology
