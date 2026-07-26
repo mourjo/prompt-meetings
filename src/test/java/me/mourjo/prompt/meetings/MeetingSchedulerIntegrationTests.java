@@ -137,16 +137,7 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message", containsString("Only the meeting organizer can invite")));
 
-        // 13. View pending invitations for bob (as bob)
-        mockMvc.perform(get("/users/bob/invitations/pending")
-                .header("X-USERNAME", "bob"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].meetingId", is(meetingId.intValue())))
-                .andExpect(jsonPath("$[0].meetingName", is("Project Sync")))
-                .andExpect(jsonPath("$[0].invitedBy", is("alice")))
-                .andExpect(jsonPath("$[0].durationMinutes", is(60)))
-                .andExpect(jsonPath("$[0].duration", is("60 minutes")));
+
 
         // 14. View pending invitations for bob (received by current user)
         mockMvc.perform(get("/meetings/invitations/pending")
@@ -155,11 +146,7 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].meetingName", is("Project Sync")));
 
-        // 15. Fail to view bob's pending invitations as alice
-        mockMvc.perform(get("/users/bob/invitations/pending")
-                .header("X-USERNAME", "alice"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message", containsString("only view your own")));
+
 
         // 16. Accept invite as Bob
         mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")

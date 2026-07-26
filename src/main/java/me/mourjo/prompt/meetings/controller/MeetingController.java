@@ -161,21 +161,7 @@ public class MeetingController {
         invitationRepository.updateStatus(meetingId, xUsername, "REJECTED");
     }
 
-    @GetMapping("/users/{username}/invitations/pending")
-    @Operation(summary = "View pending invitations for a specific user")
-    public List<PendingInvitationResponse> getPendingInvitationsForUser(
-            @Parameter(in = ParameterIn.HEADER, name = "X-USERNAME", required = true, schema = @Schema(type = "string"))
-            @RequestHeader("X-USERNAME") String xUsername,
-            @PathVariable String username) {
 
-        authService.authenticate(xUsername);
-
-        if (!xUsername.equalsIgnoreCase(username)) {
-            throw new ForbiddenException("You can only view your own pending invitations");
-        }
-
-        return invitationRepository.findPendingInvitationsForUser(username);
-    }
 
     @GetMapping("/meetings/invitations/pending")
     @Operation(summary = "View all pending invitations received by the current user")
