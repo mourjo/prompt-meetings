@@ -1,0 +1,1 @@
+Add a new property based test which ensures this invariant: for every auto rejected meeting, there should be at least one higher priority meeting that overlaps with this meeting and is accepted by the current user.
