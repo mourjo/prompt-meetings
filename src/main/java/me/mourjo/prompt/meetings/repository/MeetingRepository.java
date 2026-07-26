@@ -21,7 +21,7 @@ public interface MeetingRepository extends ListCrudRepository<Meeting, Long> {
                i.status AS user_status
         FROM meetings m
         JOIN invitations i ON m.id = i.meeting_id
-        WHERE i.invitee_username = :username AND i.status IN ('ACCEPTED', 'REJECTED')
+        WHERE i.invitee_username = :username AND i.status IN ('ACCEPTED', 'REJECTED', 'AUTO_REJECTED')
         ORDER BY m.start_time ASC
         """)
     List<UserMeetingInfo> findMeetingsForUser(@Param("username") String username);

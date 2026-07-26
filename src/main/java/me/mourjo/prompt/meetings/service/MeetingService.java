@@ -69,7 +69,7 @@ public class MeetingService {
 
         // Reject lower priority conflicting meetings
         for (MeetingConflictCheck m : conflictingMeetings) {
-            invitationRepository.updateStatus(m.id(), xUsername, "REJECTED");
+            invitationRepository.updateStatus(m.id(), xUsername, "AUTO_REJECTED");
         }
 
         Meeting meeting = new Meeting(
@@ -181,7 +181,7 @@ public class MeetingService {
 
         // Reject lower priority conflicting meetings
         for (MeetingConflictCheck m : conflictingMeetings) {
-            invitationRepository.updateStatus(m.id(), xUsername, "REJECTED");
+            invitationRepository.updateStatus(m.id(), xUsername, "AUTO_REJECTED");
         }
 
         invitationRepository.updateStatus(meetingId, xUsername, "ACCEPTED");

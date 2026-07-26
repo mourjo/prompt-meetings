@@ -311,7 +311,7 @@ public class MeetingSchedulerIntegrationTests {
         mockMvc.perform(get("/meetings")
                 .header("X-USERNAME", "alice"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.id == " + lowMeetingId + ")].userStatus", contains("REJECTED")))
+                .andExpect(jsonPath("$[?(@.id == " + lowMeetingId + ")].userStatus", contains("AUTO_REJECTED")))
                 .andExpect(jsonPath("$[?(@.id == " + highMeetingId + ")].userStatus", contains("ACCEPTED")));
 
         // Verify Timezone-aware overlap check:
@@ -393,11 +393,11 @@ public class MeetingSchedulerIntegrationTests {
                 .header("X-USERNAME", "bob"))
                 .andExpect(status().isOk());
 
-        // Verify Bob's low priority meeting is now REJECTED, and high priority meeting is ACCEPTED
+        // Verify Bob's low priority meeting is now AUTO_REJECTED, and high priority meeting is ACCEPTED
         mockMvc.perform(get("/meetings")
                 .header("X-USERNAME", "bob"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.id == " + bobLowMeetingId + ")].userStatus", contains("REJECTED")))
+                .andExpect(jsonPath("$[?(@.id == " + bobLowMeetingId + ")].userStatus", contains("AUTO_REJECTED")))
                 .andExpect(jsonPath("$[?(@.id == " + bobHighMeetingId + ")].userStatus", contains("ACCEPTED")));
 
         // Create User 'charlie'
