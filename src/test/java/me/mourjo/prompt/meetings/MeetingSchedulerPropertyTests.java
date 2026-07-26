@@ -8,8 +8,6 @@ import net.jqwik.api.*;
 import net.jqwik.api.lifecycle.BeforeTry;
 import net.jqwik.api.state.*;
 import net.jqwik.spring.JqwikSpringSupport;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -72,7 +70,6 @@ public class MeetingSchedulerPropertyTests {
     public static class SUTState {
     }
 
-    @Disabled("Skipped for quick feedback as requested in AGENTS.md")
     @Property
     void noOverlappingMeetingsForAnyUser(@ForAll("actions") ActionChain<SUTState> chain) {
         chain.withInvariant("no-overlap", sut -> {
@@ -117,17 +114,25 @@ public class MeetingSchedulerPropertyTests {
                         Arbitraries.of(CALENDARS),
                         Arbitraries.of(10, 11, 12),
                         Arbitraries.of("Europe/Paris", "UTC")
-                ).as((organizer, cal, hour, tz) -> state -> {
-                    LocalDateTime start = LocalDateTime.of(2026, 8, 1, hour, 0);
-                    LocalDateTime end = start.plusHours(1);
+                ).as((organizer, cal, hour, tz) -> new Transformer<SUTState>() {
+                    @Override
+                    public SUTState apply(SUTState state) {
+                        LocalDateTime start = LocalDateTime.of(2026, 8, 1, hour, 0);
+                        LocalDateTime end = start.plusHours(1);
 
-                    CreateMeetingRequest req = new CreateMeetingRequest("Meeting-" + hour, start, end, tz, cal);
-                    try {
-                        meetingService.createMeeting(organizer, req);
-                    } catch (Exception e) {
-                        // Expected validation/conflict failures
+                        CreateMeetingRequest req = new CreateMeetingRequest("Meeting-" + hour, start, end, tz, cal);
+                        try {
+                            meetingService.createMeeting(organizer, req);
+                        } catch (Exception e) {
+                            // Expected validation/conflict failures
+                        }
+                        return state;
                     }
-                    return state;
+
+                    @Override
+                    public String toString() {
+                        return organizer + " creates meeting 'Meeting-" + hour + "' in calendar '" + cal + "' (" + tz + " timezone)";
+                    }
                 });
             }
 
@@ -146,17 +151,30 @@ public class MeetingSchedulerPropertyTests {
                         Arbitraries.of(USERS),
                         Arbitraries.of(USERS),
                         Arbitraries.integers().greaterOrEqual(0)
-                ).as((inviter, invitee, randIndex) -> state -> {
-                    List<Meeting> meetings = meetingRepository.findAll();
-                    if (!meetings.isEmpty()) {
-                        Meeting meeting = meetings.get(randIndex % meetings.size());
-                        try {
-                            meetingService.inviteUser(inviter, meeting.getId(), invitee);
-                        } catch (Exception e) {
-                            // Expected failures
+                ).as((inviter, invitee, randIndex) -> new Transformer<SUTState>() {
+                    @Override
+                    public SUTState apply(SUTState state) {
+                        List<Meeting> meetings = meetingRepository.findAll();
+                        if (!meetings.isEmpty()) {
+                            Meeting meeting = meetings.get(randIndex % meetings.size());
+                            try {
+                                meetingService.inviteUser(inviter, meeting.getId(), invitee);
+                            } catch (Exception e) {
+                                // Expected failures
+                            }
                         }
+                        return state;
                     }
-                    return state;
+
+                    @Override
+                    public String toString() {
+                        List<Meeting> meetings = meetingRepository.findAll();
+                        if (!meetings.isEmpty()) {
+                            Meeting meeting = meetings.get(randIndex % meetings.size());
+                            return inviter + " invites " + invitee + " to meeting '" + meeting.getTitle() + "' (ID: " + meeting.getId() + ")";
+                        }
+                        return inviter + " invites " + invitee + " (no meetings exist)";
+                    }
                 });
             }
 
@@ -174,17 +192,30 @@ public class MeetingSchedulerPropertyTests {
                 return Combinators.combine(
                         Arbitraries.of(USERS),
                         Arbitraries.integers().greaterOrEqual(0)
-                ).as((user, randIndex) -> state -> {
-                    List<Meeting> meetings = meetingRepository.findAll();
-                    if (!meetings.isEmpty()) {
-                        Meeting meeting = meetings.get(randIndex % meetings.size());
-                        try {
-                            meetingService.acceptInvite(user, meeting.getId());
-                        } catch (Exception e) {
-                            // Expected failures
+                ).as((user, randIndex) -> new Transformer<SUTState>() {
+                    @Override
+                    public SUTState apply(SUTState state) {
+                        List<Meeting> meetings = meetingRepository.findAll();
+                        if (!meetings.isEmpty()) {
+                            Meeting meeting = meetings.get(randIndex % meetings.size());
+                            try {
+                                meetingService.acceptInvite(user, meeting.getId());
+                            } catch (Exception e) {
+                                // Expected failures
+                            }
                         }
+                        return state;
                     }
-                    return state;
+
+                    @Override
+                    public String toString() {
+                        List<Meeting> meetings = meetingRepository.findAll();
+                        if (!meetings.isEmpty()) {
+                            Meeting meeting = meetings.get(randIndex % meetings.size());
+                            return user + " accepts invitation to meeting '" + meeting.getTitle() + "' (ID: " + meeting.getId() + ")";
+                        }
+                        return user + " accepts invitation (no meetings exist)";
+                    }
                 });
             }
 
@@ -202,17 +233,30 @@ public class MeetingSchedulerPropertyTests {
                 return Combinators.combine(
                         Arbitraries.of(USERS),
                         Arbitraries.integers().greaterOrEqual(0)
-                ).as((user, randIndex) -> state -> {
-                    List<Meeting> meetings = meetingRepository.findAll();
-                    if (!meetings.isEmpty()) {
-                        Meeting meeting = meetings.get(randIndex % meetings.size());
-                        try {
-                            meetingService.rejectInvite(user, meeting.getId());
-                        } catch (Exception e) {
-                            // Expected failures
+                ).as((user, randIndex) -> new Transformer<SUTState>() {
+                    @Override
+                    public SUTState apply(SUTState state) {
+                        List<Meeting> meetings = meetingRepository.findAll();
+                        if (!meetings.isEmpty()) {
+                            Meeting meeting = meetings.get(randIndex % meetings.size());
+                            try {
+                                meetingService.rejectInvite(user, meeting.getId());
+                            } catch (Exception e) {
+                                // Expected failures
+                            }
                         }
+                        return state;
                     }
-                    return state;
+
+                    @Override
+                    public String toString() {
+                        List<Meeting> meetings = meetingRepository.findAll();
+                        if (!meetings.isEmpty()) {
+                            Meeting meeting = meetings.get(randIndex % meetings.size());
+                            return user + " rejects invitation to meeting '" + meeting.getTitle() + "' (ID: " + meeting.getId() + ")";
+                        }
+                        return user + " rejects invitation (no meetings exist)";
+                    }
                 });
             }
 
