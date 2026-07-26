@@ -1,95 +1,88 @@
 package me.mourjo.prompt.meetings;
 
-import me.mourjo.prompt.meetings.dto.*;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import me.mourjo.prompt.meetings.dto.CreateMeetingRequest;
+import me.mourjo.prompt.meetings.dto.MeetingResponse;
 import me.mourjo.prompt.meetings.model.Meeting;
-import me.mourjo.prompt.meetings.repository.*;
-import me.mourjo.prompt.meetings.service.*;
-import net.jqwik.api.*;
+import me.mourjo.prompt.meetings.repository.CalendarRepository;
+import me.mourjo.prompt.meetings.repository.MeetingRepository;
+import me.mourjo.prompt.meetings.repository.UserRepository;
+import me.mourjo.prompt.meetings.service.CalendarService;
+import me.mourjo.prompt.meetings.service.MeetingService;
+import me.mourjo.prompt.meetings.service.UserService;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
+import net.jqwik.api.Combinators;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import net.jqwik.api.lifecycle.BeforeTry;
-import net.jqwik.api.state.*;
+import net.jqwik.api.state.Action;
+import net.jqwik.api.state.ActionChain;
+import net.jqwik.api.state.Transformer;
 import net.jqwik.spring.JqwikSpringSupport;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
-
 @JqwikSpringSupport
 @SpringBootTest
 public class MeetingSchedulerPropertyTests {
 
+    private static final List<String> USERS = List.of("user1", "user2", "user3", "user4");
+    private static final List<String> CALENDARS = List.of("default", "medium", "high");
+    private static final List<String> TIMEZONES = List.of("UTC");
+    private static final LocalDateTime BASE_TIME = LocalDateTime.of(2026, 9, 10, 10, 0);
     @Autowired
     private UserService userService;
-
     @Autowired
     private CalendarService calendarService;
-
     @Autowired
     private MeetingService meetingService;
-
     @Autowired
     private MeetingRepository meetingRepository;
-
     @Autowired
     private UserRepository userRepository;
-
     @Autowired
     private CalendarRepository calendarRepository;
-
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private static final List<String> USERS = List.of("user1", "user2", "user3", "user4");
-    private static final List<String> CALENDARS = List.of("default", "medium", "high");
-    private static final LocalDateTime BASE_TIME = LocalDateTime.of(2026, 8, 1, 10, 0);
-
-    @BeforeTry
-    public void setUp() {
-        jdbcTemplate.execute("DELETE FROM invitations");
-        jdbcTemplate.execute("DELETE FROM meetings");
-        jdbcTemplate.execute("DELETE FROM users");
-        jdbcTemplate.execute("DELETE FROM calendars");
-
-        for (String user : USERS) {
-            userService.createUser(user);
-        }
-        // Seed default calendar (priority 1.0)
-        jdbcTemplate.execute("INSERT INTO calendars (name, priority) VALUES ('default', 1.0)");
-        // Seed other calendars
-        for (String cal : CALENDARS) {
-            if (!cal.equals("default")) {
-                double priority = cal.equals("medium") ? 2.0 : 3.0;
-                calendarService.createCalendar("user1", cal, priority);
-            }
-        }
-    }
-
-    public static class SUTState {
+    private static boolean overlaps(MeetingResponse meeting1, MeetingResponse meeting2) {
+        ZonedDateTime start1 = meeting1.startTime().atZone(ZoneId.of(meeting1.timezone()));
+        ZonedDateTime end1 = meeting1.endTime().atZone(ZoneId.of(meeting1.timezone()));
+        ZonedDateTime start2 = meeting2.startTime().atZone(ZoneId.of(meeting2.timezone()));
+        ZonedDateTime end2 = meeting2.endTime().atZone(ZoneId.of(meeting2.timezone()));
+        return start1.isBefore(end2) && start2.isBefore(end1);
     }
 
     @Property
-    void noOverlappingMeetingsForAnyUser(@ForAll("actions") ActionChain<SUTState> chain) {
+    void noOverlappingMeetingsForAnyUser(@ForAll("actions") ActionChain<CalendarMeetingsState> chain) {
         chain.withInvariant("no-overlap", sut -> {
             for (String user : USERS) {
                 List<MeetingResponse> meetings = meetingService.getMyMeetings(user).stream()
-                        .filter(m -> "ACCEPTED".equalsIgnoreCase(m.userStatus()))
-                        .collect(Collectors.toList());
+                    .filter(m -> "ACCEPTED".equalsIgnoreCase(m.userStatus()))
+                    .toList();
                 for (int i = 0; i < meetings.size(); i++) {
                     for (int j = i + 1; j < meetings.size(); j++) {
-                        MeetingResponse m1 = meetings.get(i);
-                        MeetingResponse m2 = meetings.get(j);
-                        ZonedDateTime start1 = m1.startTime().atZone(ZoneId.of(m1.timezone()));
-                        ZonedDateTime end1 = m1.endTime().atZone(ZoneId.of(m1.timezone()));
-                        ZonedDateTime start2 = m2.startTime().atZone(ZoneId.of(m2.timezone()));
-                        ZonedDateTime end2 = m2.endTime().atZone(ZoneId.of(m2.timezone()));
-                        if (start1.isBefore(end2) && start2.isBefore(end1)) {
-                            throw new AssertionError("User " + user + " is in overlapping meetings: " +
-                                    m1.title() + " [" + start1 + " - " + end1 + "] and " +
-                                    m2.title() + " [" + start2 + " - " + end2 + "]");
+                        MeetingResponse meeting1 = meetings.get(i);
+                        MeetingResponse meeting2 = meetings.get(j);
+                        if (overlaps(meeting1, meeting2)) {
+                            throw new AssertionError(
+                                "User %s is in overlapping meetings: %s [%s - %s] and %s [%s - %s]".formatted(
+                                    user,
+                                    meeting1.title(), meeting1.startTime().toLocalTime(), meeting1.endTime().toLocalTime(),
+                                    meeting2.title(), meeting2.startTime().toLocalTime(), meeting2.endTime().toLocalTime()
+                                )
+                            );
                         }
                     }
                 }
@@ -98,176 +91,209 @@ public class MeetingSchedulerPropertyTests {
     }
 
     @Provide
-    Arbitrary<ActionChain<SUTState>> actions() {
-        return ActionChain.startWith(SUTState::new)
-                .withAction(createMeetingAction())
-                .withAction(inviteUserAction())
-                .withAction(acceptInvitationAction())
-                .withAction(rejectInvitationAction());
+    Arbitrary<ActionChain<CalendarMeetingsState>> actions() {
+        return ActionChain.startWith(CalendarMeetingsState::new)
+            .withAction(new CreateMeetingAction())
+            .withAction(new InviteUserAction())
+            .withAction(new AcceptInviteAction())
+            .withAction(new RejectMeetingAction());
     }
 
-    private Action.Independent<SUTState> createMeetingAction() {
-        return new Action.Independent<>() {
-            @Override
-            public Arbitrary<Transformer<SUTState>> transformer() {
-                return Combinators.combine(
-                        Arbitraries.of(USERS),
-                        Arbitraries.of(CALENDARS),
-                        Arbitraries.of(0, 1, 2),
-                        Arbitraries.of(1),
-                        Arbitraries.of("Europe/Paris", "UTC")
-                ).as((organizer, cal, offset, duration, tz) -> new Transformer<SUTState>() {
-                    @Override
-                    public SUTState apply(SUTState state) {
-                        LocalDateTime start = BASE_TIME.plusHours(offset);
-                        LocalDateTime end = start.plusHours(duration);
+    public static class CalendarMeetingsState {
 
-                        CreateMeetingRequest req = new CreateMeetingRequest("Meeting-" + start.getHour(), start, end, tz, cal);
-                        try {
-                            meetingService.createMeeting(organizer, req);
-                        } catch (Exception e) {
-                            // Expected validation/conflict failures
-                        }
-                        return state;
-                    }
+        public static AtomicInteger nextId = new AtomicInteger(0);
+        public static Map<Integer, Long> meetingLookup = new HashMap<>();
 
-                    @Override
-                    public String toString() {
-                        LocalDateTime start = BASE_TIME.plusHours(offset);
-                        LocalDateTime end = start.plusHours(duration);
-                        return organizer + " creates meeting 'Meeting-" + start.getHour() + "' in calendar '" + cal + "' (" + tz + " timezone) from " + start.toLocalTime() + " to " + end.toLocalTime();
-                    }
-                });
+        public static void runSilently(Runnable action) {
+            try {
+                action.run();
+            } catch (Exception ignored) {
+                // Exception suppressed
             }
-
-            @Override
-            public String toString() {
-                return "create-meeting";
-            }
-        };
+        }
     }
 
-    private Action.Independent<SUTState> inviteUserAction() {
-        return new Action.Independent<>() {
-            @Override
-            public Arbitrary<Transformer<SUTState>> transformer() {
-                return Combinators.combine(
-                        Arbitraries.of(USERS),
-                        Arbitraries.of(USERS),
-                        Arbitraries.integers().greaterOrEqual(0)
-                ).as((inviter, invitee, randIndex) -> new Transformer<SUTState>() {
-                    @Override
-                    public SUTState apply(SUTState state) {
-                        List<Meeting> meetings = meetingRepository.findAll();
-                        if (!meetings.isEmpty()) {
-                            Meeting meeting = meetings.get(randIndex % meetings.size());
-                            try {
-                                meetingService.inviteUser(inviter, meeting.getId(), invitee);
-                            } catch (Exception e) {
-                                // Expected failures
-                            }
-                        }
-                        return state;
-                    }
+    private class AcceptInviteAction implements Action.Independent<CalendarMeetingsState> {
 
-                    @Override
-                    public String toString() {
-                        List<Meeting> meetings = meetingRepository.findAll();
-                        if (!meetings.isEmpty()) {
-                            Meeting meeting = meetings.get(randIndex % meetings.size());
-                            return inviter + " invites " + invitee + " to meeting '" + meeting.getTitle() + "' (ID: " + meeting.getId() + ")";
-                        }
-                        return inviter + " invites " + invitee + " (no meetings exist)";
-                    }
-                });
-            }
+        @Override
+        public Arbitrary<Transformer<CalendarMeetingsState>> transformer() {
+            return Combinators.combine(
+                Arbitraries.of(USERS),
+                Arbitraries.integers().between(0, CalendarMeetingsState.nextId.get())
+            ).as((user, randIndex) -> new Transformer<>() {
+                @Override
+                public CalendarMeetingsState apply(CalendarMeetingsState state) {
+                    meetingRepository.findById(CalendarMeetingsState.meetingLookup.getOrDefault(randIndex, -1001L))
+                        .ifPresent(meeting -> CalendarMeetingsState.runSilently(() ->
+                            meetingService.acceptInvite(user, meeting.getId())));
+                    return state;
+                }
 
-            @Override
-            public String toString() {
-                return "invite-user";
-            }
-        };
+                @Override
+                public String toString() {
+                    Optional<Meeting> meeting = meetingRepository.findById(CalendarMeetingsState.meetingLookup.getOrDefault(randIndex, -1001L));
+                    if (meeting.isPresent()) {
+                        return "%s accepts invitation to meeting %s".formatted(user, meeting.get().getTitle());
+                    }
+                    return "accept-invitation-no-op";
+                }
+            });
+        }
+
+        @Override
+        public String toString() {
+            return "accept-invitation";
+        }
     }
 
-    private Action.Independent<SUTState> acceptInvitationAction() {
-        return new Action.Independent<>() {
-            @Override
-            public Arbitrary<Transformer<SUTState>> transformer() {
-                return Combinators.combine(
-                        Arbitraries.of(USERS),
-                        Arbitraries.integers().greaterOrEqual(0)
-                ).as((user, randIndex) -> new Transformer<SUTState>() {
-                    @Override
-                    public SUTState apply(SUTState state) {
-                        List<Meeting> meetings = meetingRepository.findAll();
-                        if (!meetings.isEmpty()) {
-                            Meeting meeting = meetings.get(randIndex % meetings.size());
-                            try {
-                                meetingService.acceptInvite(user, meeting.getId());
-                            } catch (Exception e) {
-                                // Expected failures
-                            }
-                        }
-                        return state;
-                    }
+    private class InviteUserAction implements Action.Independent<CalendarMeetingsState> {
 
-                    @Override
-                    public String toString() {
-                        List<Meeting> meetings = meetingRepository.findAll();
-                        if (!meetings.isEmpty()) {
-                            Meeting meeting = meetings.get(randIndex % meetings.size());
-                            return user + " accepts invitation to meeting '" + meeting.getTitle() + "' (ID: " + meeting.getId() + ")";
-                        }
-                        return user + " accepts invitation (no meetings exist)";
+        @Override
+        public Arbitrary<Transformer<CalendarMeetingsState>> transformer() {
+            return Combinators.combine(
+                Arbitraries.of(USERS),
+                Arbitraries.of(USERS),
+                Arbitraries.integers().between(0, CalendarMeetingsState.nextId.get())
+            ).as((inviter, invitee, meetingIdx) -> new Transformer<>() {
+                @Override
+                public CalendarMeetingsState apply(CalendarMeetingsState state) {
+                    if (!invitee.equals(inviter)) {
+                        meetingRepository.findById(CalendarMeetingsState.meetingLookup.getOrDefault(meetingIdx, -1001L)).ifPresent(
+                            meeting -> CalendarMeetingsState.runSilently(() ->
+                                meetingService.inviteUser(inviter, meeting.getId(), invitee))
+                        );
                     }
-                });
-            }
+                    return state;
+                }
 
-            @Override
-            public String toString() {
-                return "accept-invitation";
-            }
-        };
+                @Override
+                public String toString() {
+                    if (!invitee.equals(inviter)) {
+                        Optional<Meeting> meeting = meetingRepository.findById(CalendarMeetingsState.meetingLookup.getOrDefault(meetingIdx, -1001L));
+                        if (meeting.isPresent()) {
+                            return "%s invites %s to %s".formatted(inviter, invitee, meeting.get().getTitle());
+                        }
+                    }
+                    return "invite-user-no-op";
+                }
+            });
+        }
+
+        @Override
+        public String toString() {
+            return "invite-user";
+        }
     }
 
-    private Action.Independent<SUTState> rejectInvitationAction() {
-        return new Action.Independent<>() {
-            @Override
-            public Arbitrary<Transformer<SUTState>> transformer() {
-                return Combinators.combine(
-                        Arbitraries.of(USERS),
-                        Arbitraries.integers().greaterOrEqual(0)
-                ).as((user, randIndex) -> new Transformer<SUTState>() {
-                    @Override
-                    public SUTState apply(SUTState state) {
-                        List<Meeting> meetings = meetingRepository.findAll();
-                        if (!meetings.isEmpty()) {
-                            Meeting meeting = meetings.get(randIndex % meetings.size());
-                            try {
-                                meetingService.rejectInvite(user, meeting.getId());
-                            } catch (Exception e) {
-                                // Expected failures
-                            }
-                        }
-                        return state;
-                    }
+    private class RejectMeetingAction implements Action.Independent<CalendarMeetingsState> {
 
-                    @Override
-                    public String toString() {
-                        List<Meeting> meetings = meetingRepository.findAll();
-                        if (!meetings.isEmpty()) {
-                            Meeting meeting = meetings.get(randIndex % meetings.size());
-                            return user + " rejects invitation to meeting '" + meeting.getTitle() + "' (ID: " + meeting.getId() + ")";
-                        }
-                        return user + " rejects invitation (no meetings exist)";
-                    }
-                });
-            }
+        @Override
+        public Arbitrary<Transformer<CalendarMeetingsState>> transformer() {
+            return Combinators.combine(
+                Arbitraries.of(USERS),
+                Arbitraries.integers().between(0, CalendarMeetingsState.nextId.get())
+            ).as((user, randIndex) -> new Transformer<>() {
+                @Override
+                public CalendarMeetingsState apply(CalendarMeetingsState state) {
+                    meetingRepository.findById(CalendarMeetingsState.meetingLookup.getOrDefault(randIndex, -1001L))
+                        .ifPresent(meeting -> CalendarMeetingsState.runSilently(() ->
+                            meetingService.rejectInvite(user, meeting.getId()))
+                        );
+                    return state;
+                }
 
-            @Override
-            public String toString() {
-                return "reject-invitation";
+                @Override
+                public String toString() {
+                    Optional<Meeting> meeting = meetingRepository.findById(CalendarMeetingsState.meetingLookup.getOrDefault(randIndex, -1001L));
+                    if (meeting.isPresent()) {
+                        return "%s rejects invitation to %s".formatted(user, meeting.get().getTitle());
+                    }
+                    return "reject-invitation-no-op";
+                }
+            });
+        }
+
+        @Override
+        public String toString() {
+            return "reject-invitation";
+        }
+    }
+
+    private class CreateMeetingAction implements Action.Independent<CalendarMeetingsState> {
+
+        @Override
+        public Arbitrary<Transformer<CalendarMeetingsState>> transformer() {
+            return Combinators.combine(
+                Arbitraries.of(USERS),
+                Arbitraries.of(CALENDARS),
+                Arbitraries.integers().between(0, 360),
+                Arbitraries.integers().between(1, 60),
+                Arbitraries.of(TIMEZONES),
+                Arbitraries.just(CalendarMeetingsState.nextId.get())
+            ).as(this::applyMeetingCreationSideEffects);
+        }
+
+        private Transformer<CalendarMeetingsState> applyMeetingCreationSideEffects(String organizer, String cal, Integer offset, Integer duration, String tz,
+            Integer sequentialId) {
+            return new Transformer<>() {
+
+                @Override
+                public CalendarMeetingsState apply(CalendarMeetingsState state) {
+                    var start = BASE_TIME.plusMinutes(offset);
+                    var end = start.plusMinutes(duration);
+                    var req = new CreateMeetingRequest("Meeting-" + sequentialId, start, end, tz, cal);
+
+                    CalendarMeetingsState.runSilently(() -> {
+                        var resp = meetingService.createMeeting(organizer, req);
+                        var meeting = meetingRepository.findById(resp.id()).get();
+                        CalendarMeetingsState.meetingLookup.put(sequentialId, meeting.getId());
+                        CalendarMeetingsState.nextId.incrementAndGet();
+                    });
+
+                    return state;
+                }
+
+                @Override
+                public String toString() {
+                    if (CalendarMeetingsState.meetingLookup.containsKey(sequentialId)) {
+                        var start = BASE_TIME.plusMinutes(offset);
+                        var end = start.plusMinutes(duration);
+                        return "%s creates Meeting-%s in calendar %s (%s) from %s to %s"
+                            .formatted(organizer, sequentialId, cal, tz, start.toLocalTime(), end.toLocalTime());
+                    }
+                    return "create-meeting-no-op";
+                }
+            };
+        }
+
+        @Override
+        public String toString() {
+            return "create-meeting";
+        }
+    }
+
+    @BeforeTry
+    public void setUp() {
+        jdbcTemplate.execute("DELETE FROM invitations");
+        jdbcTemplate.execute("DELETE FROM meetings");
+        jdbcTemplate.execute("DELETE FROM users");
+        jdbcTemplate.execute("DELETE FROM calendars");
+        CalendarMeetingsState.meetingLookup = new HashMap<>();
+        CalendarMeetingsState.nextId = new AtomicInteger(0);
+
+        for (String user : USERS) {
+            userService.createUser(user);
+        }
+
+        // Seed default calendar (priority 1.0)
+        jdbcTemplate.execute("INSERT INTO calendars (name, priority) VALUES ('default', 1.0)");
+
+        // Seed other calendars
+        for (String cal : CALENDARS) {
+            if (!cal.equals("default")) {
+                double priority = cal.equals("medium") ? 2.0 : 3.0;
+                calendarService.createCalendar("user1", cal, priority);
             }
-        };
+        }
     }
 }
