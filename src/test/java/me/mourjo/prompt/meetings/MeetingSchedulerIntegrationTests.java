@@ -178,24 +178,59 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")))
                 .andExpect(jsonPath("$[0].calendarName", is("default")));
 
-        // 19.5 Alice rejects her own meeting
+        // 19.5 Alice tries to reject her own meeting (fails because it's already ACCEPTED)
         mockMvc.perform(post("/meetings/" + meetingId + "/invites/reject")
-                .header("X-USERNAME", "alice"))
-                .andExpect(status().isOk());
-
-        // 19.6 Alice tries to accept her rejected meeting (should fail because it's already REJECTED)
-        mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")
                 .header("X-USERNAME", "alice"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("Invitation is not in a pending state")));
 
-        // Verify Alice's meetings view now shows REJECTED for this meeting
+        // Verify Alice's meetings view still shows ACCEPTED for this meeting
         mockMvc.perform(get("/meetings")
                 .header("X-USERNAME", "alice"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
+                .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")));
+
+        // Register new user 'eve'
+        CreateUserRequest createEve = new CreateUserRequest("eve");
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createEve)))
+                .andExpect(status().isCreated());
+
+        // Alice invites Eve to the meeting
+        InviteUserRequest inviteEve = new InviteUserRequest("eve");
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(inviteEve)))
+                .andExpect(status().isCreated());
+
+        // Eve rejects her pending invitation (succeeds)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/reject")
+                .header("X-USERNAME", "eve"))
+                .andExpect(status().isOk());
+
+        // Verify Eve's meetings view shows REJECTED for this meeting
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "eve"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
                 .andExpect(jsonPath("$[0].userStatus", is("REJECTED")));
+
+        // Eve tries to reject her already rejected invitation (fails)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/reject")
+                .header("X-USERNAME", "eve"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Invitation is not in a pending state")));
+
+        // Eve tries to accept her rejected invitation (fails)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")
+                .header("X-USERNAME", "eve"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Invitation is not in a pending state")));
 
         // Verify Bob's meetings view still shows ACCEPTED for this meeting (others can still attend)
         mockMvc.perform(get("/meetings")

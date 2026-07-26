@@ -192,8 +192,12 @@ public class MeetingService {
             throw new NotFoundException("Meeting not found with ID: " + meetingId);
         }
 
-        invitationRepository.getInvitationStatus(meetingId, xUsername)
+        String status = invitationRepository.getInvitationStatus(meetingId, xUsername)
                 .orElseThrow(() -> new ForbiddenException("Only an invited member can respond to an existing invitation"));
+
+        if (!"PENDING".equalsIgnoreCase(status)) {
+            throw new BadRequestException("Invitation is not in a pending state");
+        }
 
         invitationRepository.updateStatus(meetingId, xUsername, "REJECTED");
     }
