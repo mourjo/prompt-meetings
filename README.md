@@ -13,7 +13,7 @@ The platform defines three primary entities:
 ## Capabilities
 - **User Management**: Support for creating new users with unique usernames and retrieving the directory of all registered users.
 - **Calendar Management**: Support for creating new calendars with a unique name and priority by any existing user. Retrieving a list of all global calendars.
-- **Meeting Management**: Organizing new meetings by specifying the title, start/end dates, a timezone, and a target calendar name (meetings cannot be moved between calendars after creation). Retrieving meetings associated with a user.
+- **Meeting Management**: Organizing new meetings by specifying the title, start/end dates, a timezone, and a target calendar name. Includes timezone-aware priority-based conflict resolution: creating a meeting automatically rejects overlapping meetings in lower-priority calendars, while preventing scheduling (returning 400 Bad Request) if a conflict exists in a calendar of the same or higher priority. Retrieving meetings associated with a user.
 - **Invitation Management**: Allowing meeting organizers to invite other registered users to their meetings. Allowing invitees to accept or reject pending invitations, and enabling users to inspect their pending invitations.
 - **API Documentation**: Automatic interactive documentation of the application through a Swagger/OpenAPI UI.
 

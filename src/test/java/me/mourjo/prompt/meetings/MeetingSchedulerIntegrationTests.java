@@ -247,5 +247,84 @@ public class MeetingSchedulerIntegrationTests {
                 .content(objectMapper.writeValueAsString(invalidCalMeeting)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("does not exist")));
+
+        // 21. Priority-Based Conflict Resolution workflow:
+        // Create calendars: 'high-priority' (5.0) and 'low-priority' (2.0)
+        CreateCalendarRequest createHigh = new CreateCalendarRequest("high-priority", 5.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createHigh)))
+                .andExpect(status().isCreated());
+
+        CreateCalendarRequest createLow = new CreateCalendarRequest("low-priority", 2.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createLow)))
+                .andExpect(status().isCreated());
+
+        // Create initial meeting in 'low-priority' calendar
+        LocalDateTime timeStart1 = LocalDateTime.of(2026, 9, 1, 14, 0);
+        LocalDateTime timeEnd1 = LocalDateTime.of(2026, 9, 1, 15, 0);
+        CreateMeetingRequest lowMeeting = new CreateMeetingRequest("Low Priority Meeting", timeStart1, timeEnd1, "Europe/Paris", "low-priority");
+        String lowMeetingRes = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(lowMeeting)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long lowMeetingId = objectMapper.readTree(lowMeetingRes).get("id").asLong();
+
+        // Fail to create overlapping meeting of SAME priority (should return 400)
+        CreateMeetingRequest overlappingSameMeeting = new CreateMeetingRequest("Overlapping Same Priority", timeStart1.plusMinutes(30), timeEnd1.plusMinutes(30), "Europe/Paris", "low-priority");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(overlappingSameMeeting)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting")));
+
+        // Succeed creating overlapping meeting of HIGHER priority
+        CreateMeetingRequest overlappingHighMeeting = new CreateMeetingRequest("Overlapping High Priority", timeStart1.plusMinutes(30), timeEnd1.plusMinutes(30), "Europe/Paris", "high-priority");
+        String highMeetingRes = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(overlappingHighMeeting)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long highMeetingId = objectMapper.readTree(highMeetingRes).get("id").asLong();
+
+        // Verify that the low priority meeting was automatically rejected
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + lowMeetingId + ")].userStatus", contains("REJECTED")))
+                .andExpect(jsonPath("$[?(@.id == " + highMeetingId + ")].userStatus", contains("ACCEPTED")));
+
+        // Verify Timezone-aware overlap check:
+        // Schedule a meeting in 'high-priority' (5.0) at 10:00 Europe/Paris to 11:00 Europe/Paris on Sept 2nd.
+        LocalDateTime parisStart = LocalDateTime.of(2026, 9, 2, 10, 0);
+        LocalDateTime parisEnd = LocalDateTime.of(2026, 9, 2, 11, 0);
+        CreateMeetingRequest parisMeeting = new CreateMeetingRequest("Paris Meeting", parisStart, parisEnd, "Europe/Paris", "high-priority");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(parisMeeting)))
+                .andExpect(status().isCreated());
+
+        // Try to schedule overlapping meeting in 'high-priority' (5.0) at 08:30 UTC to 09:30 UTC.
+        // In summer (Sept 2), Europe/Paris is UTC+2, so 10:00-11:00 Europe/Paris = 08:00-09:00 UTC.
+        // Therefore, 08:30-09:30 UTC overlaps with the Paris Meeting.
+        // Since priority is the same (5.0 >= 5.0), it should be blocked and return 400.
+        LocalDateTime utcStart = LocalDateTime.of(2026, 9, 2, 8, 30);
+        LocalDateTime utcEnd = LocalDateTime.of(2026, 9, 2, 9, 30);
+        CreateMeetingRequest utcMeeting = new CreateMeetingRequest("UTC Meeting", utcStart, utcEnd, "UTC", "high-priority");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(utcMeeting)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting")));
     }
 }

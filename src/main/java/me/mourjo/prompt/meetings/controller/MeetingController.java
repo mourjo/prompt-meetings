@@ -59,14 +59,43 @@ public class MeetingController {
             throw new BadRequestException("Start time must be before end time");
         }
 
+        ZoneId newZoneId;
         try {
-            ZoneId.of(request.timezone());
+            newZoneId = ZoneId.of(request.timezone());
         } catch (Exception e) {
             throw new BadRequestException("Invalid timezone: " + request.timezone());
         }
 
         if (!calendarRepository.existsByName(request.calendarName())) {
             throw new BadRequestException("Calendar '" + request.calendarName() + "' does not exist");
+        }
+
+        double newPriority = calendarRepository.getPriority(request.calendarName());
+        java.time.ZonedDateTime newStart = request.startTime().atZone(newZoneId);
+        java.time.ZonedDateTime newEnd = request.endTime().atZone(newZoneId);
+
+        List<MeetingConflictCheck> existingMeetings = meetingRepository.findAcceptedMeetingsForConflictCheck(xUsername);
+        List<MeetingConflictCheck> conflictingMeetings = new java.util.ArrayList<>();
+
+        for (MeetingConflictCheck m : existingMeetings) {
+            ZoneId extZoneId = ZoneId.of(m.timezone());
+            java.time.ZonedDateTime extStart = m.startTime().atZone(extZoneId);
+            java.time.ZonedDateTime extEnd = m.endTime().atZone(extZoneId);
+
+            if (extStart.isBefore(newEnd) && newStart.isBefore(extEnd)) {
+                conflictingMeetings.add(m);
+            }
+        }
+
+        for (MeetingConflictCheck m : conflictingMeetings) {
+            if (m.calendarPriority() >= newPriority) {
+                throw new BadRequestException("Conflict with meeting '" + m.title() + "' in calendar '" + m.calendarName() + "' (priority: " + m.calendarPriority() + " >= " + newPriority + ")");
+            }
+        }
+
+        // Reject lower priority conflicting meetings
+        for (MeetingConflictCheck m : conflictingMeetings) {
+            invitationRepository.updateStatus(m.id(), xUsername, "REJECTED");
         }
 
         Long meetingId = meetingRepository.save(

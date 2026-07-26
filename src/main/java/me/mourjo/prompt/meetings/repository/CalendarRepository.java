@@ -32,6 +32,18 @@ public class CalendarRepository {
         return count != null && count > 0;
     }
 
+    public double getPriority(String name) {
+        Double priority = jdbcTemplate.queryForObject(
+            "SELECT priority FROM calendars WHERE name = ?",
+            Double.class,
+            name
+        );
+        if (priority == null) {
+            throw new IllegalArgumentException("Calendar not found: " + name);
+        }
+        return priority;
+    }
+
     public List<CalendarResponse> findAll() {
         return jdbcTemplate.query(
             "SELECT name, priority FROM calendars ORDER BY priority ASC, name ASC",

@@ -1,5 +1,6 @@
 package me.mourjo.prompt.meetings.repository;
 
+import me.mourjo.prompt.meetings.dto.MeetingConflictCheck;
 import me.mourjo.prompt.meetings.dto.MeetingResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -79,6 +80,25 @@ public class MeetingRepository {
             rs.getString("organizer_username"),
             rs.getString("user_status"),
             rs.getString("calendar_name")
+        ), username);
+    }
+
+    public List<MeetingConflictCheck> findAcceptedMeetingsForConflictCheck(String username) {
+        String sql = """
+            SELECT m.id, m.title, m.start_time, m.end_time, m.timezone, m.calendar_name, c.priority AS calendar_priority
+            FROM meetings m
+            JOIN invitations i ON m.id = i.meeting_id
+            JOIN calendars c ON m.calendar_name = c.name
+            WHERE i.invitee_username = ? AND i.status = 'ACCEPTED'
+            """;
+        return jdbcTemplate.query(sql, (rs, rowNum) -> new MeetingConflictCheck(
+            rs.getLong("id"),
+            rs.getString("title"),
+            rs.getTimestamp("start_time").toLocalDateTime(),
+            rs.getTimestamp("end_time").toLocalDateTime(),
+            rs.getString("timezone"),
+            rs.getString("calendar_name"),
+            rs.getDouble("calendar_priority")
         ), username);
     }
 }
