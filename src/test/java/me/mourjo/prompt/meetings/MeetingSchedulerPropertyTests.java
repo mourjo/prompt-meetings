@@ -45,6 +45,7 @@ public class MeetingSchedulerPropertyTests {
 
     private static final List<String> USERS = List.of("user1", "user2", "user3", "user4");
     private static final List<String> CALENDARS = List.of("default", "medium", "high");
+    private static final LocalDateTime BASE_TIME = LocalDateTime.of(2026, 8, 1, 10, 0);
 
     @BeforeTry
     public void setUp() {
@@ -112,15 +113,16 @@ public class MeetingSchedulerPropertyTests {
                 return Combinators.combine(
                         Arbitraries.of(USERS),
                         Arbitraries.of(CALENDARS),
-                        Arbitraries.of(10, 11, 12),
+                        Arbitraries.of(0, 1, 2),
+                        Arbitraries.of(1),
                         Arbitraries.of("Europe/Paris", "UTC")
-                ).as((organizer, cal, hour, tz) -> new Transformer<SUTState>() {
+                ).as((organizer, cal, offset, duration, tz) -> new Transformer<SUTState>() {
                     @Override
                     public SUTState apply(SUTState state) {
-                        LocalDateTime start = LocalDateTime.of(2026, 8, 1, hour, 0);
-                        LocalDateTime end = start.plusHours(1);
+                        LocalDateTime start = BASE_TIME.plusHours(offset);
+                        LocalDateTime end = start.plusHours(duration);
 
-                        CreateMeetingRequest req = new CreateMeetingRequest("Meeting-" + hour, start, end, tz, cal);
+                        CreateMeetingRequest req = new CreateMeetingRequest("Meeting-" + start.getHour(), start, end, tz, cal);
                         try {
                             meetingService.createMeeting(organizer, req);
                         } catch (Exception e) {
@@ -131,9 +133,9 @@ public class MeetingSchedulerPropertyTests {
 
                     @Override
                     public String toString() {
-                        LocalDateTime start = LocalDateTime.of(2026, 8, 1, hour, 0);
-                        LocalDateTime end = start.plusHours(1);
-                        return organizer + " creates meeting 'Meeting-" + hour + "' in calendar '" + cal + "' (" + tz + " timezone) from " + start + " to " + end;
+                        LocalDateTime start = BASE_TIME.plusHours(offset);
+                        LocalDateTime end = start.plusHours(duration);
+                        return organizer + " creates meeting 'Meeting-" + start.getHour() + "' in calendar '" + cal + "' (" + tz + " timezone) from " + start.toLocalTime() + " to " + end.toLocalTime();
                     }
                 });
             }
