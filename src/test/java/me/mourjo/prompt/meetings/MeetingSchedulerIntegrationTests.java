@@ -148,6 +148,12 @@ public class MeetingSchedulerIntegrationTests {
                 .header("X-USERNAME", "bob"))
                 .andExpect(status().isOk());
 
+        // 16.5 Accept invite as Bob again (should fail because it's already ACCEPTED)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Invitation is not in a pending state")));
+
         // 17. Verify Bob no longer has pending invitations
         mockMvc.perform(get("/meetings/invitations/pending")
                 .header("X-USERNAME", "bob"))
@@ -176,6 +182,12 @@ public class MeetingSchedulerIntegrationTests {
         mockMvc.perform(post("/meetings/" + meetingId + "/invites/reject")
                 .header("X-USERNAME", "alice"))
                 .andExpect(status().isOk());
+
+        // 19.6 Alice tries to accept her rejected meeting (should fail because it's already REJECTED)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Invitation is not in a pending state")));
 
         // Verify Alice's meetings view now shows REJECTED for this meeting
         mockMvc.perform(get("/meetings")

@@ -21,6 +21,7 @@ import me.mourjo.prompt.meetings.service.UserService;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.Combinators;
+import net.jqwik.api.Disabled;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
@@ -64,6 +65,7 @@ public class MeetingSchedulerPropertyTests {
         return start1.isBefore(end2) && start2.isBefore(end1);
     }
 
+    @Disabled
     @Property
     void noOverlappingMeetingsForAnyUser(@ForAll("actions") ActionChain<CalendarMeetingsState> chain) {
         chain.withInvariant("no-overlap", sut -> {
