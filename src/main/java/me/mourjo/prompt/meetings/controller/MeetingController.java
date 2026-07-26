@@ -14,6 +14,7 @@ import me.mourjo.prompt.meetings.repository.CalendarRepository;
 import me.mourjo.prompt.meetings.repository.InvitationRepository;
 import me.mourjo.prompt.meetings.repository.MeetingRepository;
 import me.mourjo.prompt.meetings.repository.UserRepository;
+import me.mourjo.prompt.meetings.model.Meeting;
 import me.mourjo.prompt.meetings.service.AuthService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -98,7 +99,7 @@ public class MeetingController {
             invitationRepository.updateStatus(m.id(), xUsername, "REJECTED");
         }
 
-        Long meetingId = meetingRepository.save(
+        Meeting meeting = new Meeting(
             request.title(),
             request.startTime(),
             request.endTime(),
@@ -106,6 +107,8 @@ public class MeetingController {
             xUsername,
             request.calendarName()
         );
+        Meeting saved = meetingRepository.save(meeting);
+        Long meetingId = saved.getId();
 
         // Auto-create and accept invitation for the organizer
         invitationRepository.saveInvitation(meetingId, xUsername);
