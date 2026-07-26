@@ -131,7 +131,9 @@ public class MeetingSchedulerPropertyTests {
 
                     @Override
                     public String toString() {
-                        return organizer + " creates meeting 'Meeting-" + hour + "' in calendar '" + cal + "' (" + tz + " timezone)";
+                        LocalDateTime start = LocalDateTime.of(2026, 8, 1, hour, 0);
+                        LocalDateTime end = start.plusHours(1);
+                        return organizer + " creates meeting 'Meeting-" + hour + "' in calendar '" + cal + "' (" + tz + " timezone) from " + start + " to " + end;
                     }
                 });
             }
