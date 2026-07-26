@@ -64,14 +64,10 @@ public class MeetingRepository {
     public List<MeetingResponse> findMeetingsForUser(String username) {
         String sql = """
             SELECT m.id, m.title, m.start_time, m.end_time, m.timezone, m.organizer_username, m.calendar_name,
-                   CASE
-                     WHEN m.organizer_username = ? THEN 'ORGANIZER'
-                     ELSE i.status
-                   END AS user_status
+                   i.status AS user_status
             FROM meetings m
-            LEFT JOIN invitations i ON m.id = i.meeting_id AND i.invitee_username = ?
-            WHERE m.organizer_username = ?
-               OR (i.invitee_username = ? AND i.status IN ('ACCEPTED', 'REJECTED'))
+            JOIN invitations i ON m.id = i.meeting_id
+            WHERE i.invitee_username = ? AND i.status IN ('ACCEPTED', 'REJECTED')
             ORDER BY m.start_time ASC
             """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> new MeetingResponse(
@@ -83,6 +79,6 @@ public class MeetingRepository {
             rs.getString("organizer_username"),
             rs.getString("user_status"),
             rs.getString("calendar_name")
-        ), username, username, username, username);
+        ), username);
     }
 }

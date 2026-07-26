@@ -78,7 +78,7 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message", containsString("not registered")));
 
-        // 7. Create meeting successfully (alice is organizer)
+        // 7. Create meeting successfully (alice is organizer, status defaults to ACCEPTED)
         String meetingResponseJson = mockMvc.perform(post("/meetings")
                 .header("X-USERNAME", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -87,7 +87,7 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(jsonPath("$.id", notNullValue()))
                 .andExpect(jsonPath("$.title", is("Project Sync")))
                 .andExpect(jsonPath("$.organizerUsername", is("alice")))
-                .andExpect(jsonPath("$.userStatus", is("ORGANIZER")))
+                .andExpect(jsonPath("$.userStatus", is("ACCEPTED")))
                 .andExpect(jsonPath("$.calendarName", is("default")))
                 .andReturn().getResponse().getContentAsString();
 
@@ -163,14 +163,35 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")))
                 .andExpect(jsonPath("$[0].calendarName", is("default")));
 
-        // 19. View Alice's meetings (should show ORGANIZER)
+        // 19. View Alice's meetings (should show ACCEPTED since organizer defaults to accepted)
         mockMvc.perform(get("/meetings")
                 .header("X-USERNAME", "alice"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
-                .andExpect(jsonPath("$[0].userStatus", is("ORGANIZER")))
+                .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")))
                 .andExpect(jsonPath("$[0].calendarName", is("default")));
+
+        // 19.5 Alice rejects her own meeting
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/reject")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk());
+
+        // Verify Alice's meetings view now shows REJECTED for this meeting
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
+                .andExpect(jsonPath("$[0].userStatus", is("REJECTED")));
+
+        // Verify Bob's meetings view still shows ACCEPTED for this meeting (others can still attend)
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
+                .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")));
 
         // 20. Calendar workflow:
         // Get calendars initially - should only have the seeded default calendar

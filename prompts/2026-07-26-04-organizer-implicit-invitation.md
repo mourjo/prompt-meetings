@@ -1,0 +1,1 @@
+Maintain an invitation for myself for meetings that I created, which is implicitly accepted. For every new meeting I create, there should be an automatic accepted invitation for this meeting. The intention is to later be able to reject my own meeting but others should still be able to attend it.

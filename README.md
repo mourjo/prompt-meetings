@@ -7,7 +7,7 @@ The Prompt Meetings application is a meeting scheduler and coordination platform
 The platform defines three primary entities:
 - **User**: Represented by a unique username. All scheduling operations are tied to a registered user.
 - **Meeting**: A scheduled event with a title, localized start and end times, a timezone identifier, and a designated user as the Organizer (owner).
-- **Invitation**: An association between a Meeting and a User representing a request for attendance. It tracks response status as either pending, confirmed (accepted), or declined (rejected).
+- **Invitation**: An association between a Meeting and a User representing a request for attendance. It tracks response status as either pending, confirmed (accepted), or declined (rejected). Creating a meeting automatically registers an accepted invitation for the organizer, allowing them to reject their own meeting later while others can still attend.
 - **Calendar**: A global, shared schedule container identified by a unique name. Calendars have priorities represented by a floating point number. A built-in default calendar named `"default"` with priority `1.0` is always present.
 
 ## Capabilities

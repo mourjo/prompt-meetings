@@ -46,6 +46,7 @@ public class MeetingController {
 
     @PostMapping("/meetings")
     @ResponseStatus(HttpStatus.CREATED)
+    @org.springframework.transaction.annotation.Transactional
     @Operation(summary = "Create a meeting with a start and end time")
     public MeetingResponse createMeeting(
             @Parameter(in = ParameterIn.HEADER, name = "X-USERNAME", required = true, schema = @Schema(type = "string"))
@@ -77,6 +78,10 @@ public class MeetingController {
             request.calendarName()
         );
 
+        // Auto-create and accept invitation for the organizer
+        invitationRepository.saveInvitation(meetingId, xUsername);
+        invitationRepository.updateStatus(meetingId, xUsername, "ACCEPTED");
+
         return new MeetingResponse(
             meetingId,
             request.title(),
@@ -84,7 +89,7 @@ public class MeetingController {
             request.endTime(),
             request.timezone(),
             xUsername,
-            "ORGANIZER",
+            "ACCEPTED",
             request.calendarName()
         );
     }
