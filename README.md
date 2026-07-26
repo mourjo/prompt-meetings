@@ -8,10 +8,12 @@ The platform defines three primary entities:
 - **User**: Represented by a unique username. All scheduling operations are tied to a registered user.
 - **Meeting**: A scheduled event with a title, localized start and end times, a timezone identifier, and a designated user as the Organizer (owner).
 - **Invitation**: An association between a Meeting and a User representing a request for attendance. It tracks response status as either pending, confirmed (accepted), or declined (rejected).
+- **Calendar**: A global, shared schedule container identified by a unique name. Calendars have priorities represented by a floating point number. A built-in default calendar named `"default"` with priority `1.0` is always present.
 
 ## Capabilities
 - **User Management**: Support for creating new users with unique usernames and retrieving the directory of all registered users.
-- **Meeting Management**: Organizing new meetings by specifying the title, start/end dates, and a timezone. Retrieving meetings associated with a user (both organized meetings and meetings with accepted or rejected invitations).
+- **Calendar Management**: Support for creating new calendars with a unique name and priority by any existing user. Retrieving a list of all global calendars.
+- **Meeting Management**: Organizing new meetings by specifying the title, start/end dates, a timezone, and a target calendar name (meetings cannot be moved between calendars after creation). Retrieving meetings associated with a user.
 - **Invitation Management**: Allowing meeting organizers to invite other registered users to their meetings. Allowing invitees to accept or reject pending invitations, and enabling users to inspect their pending invitations.
 - **API Documentation**: Automatic interactive documentation of the application through a Swagger/OpenAPI UI.
 

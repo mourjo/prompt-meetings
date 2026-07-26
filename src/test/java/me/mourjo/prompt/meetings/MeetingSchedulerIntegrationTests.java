@@ -1,9 +1,7 @@
 package me.mourjo.prompt.meetings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import me.mourjo.prompt.meetings.dto.CreateMeetingRequest;
-import me.mourjo.prompt.meetings.dto.CreateUserRequest;
-import me.mourjo.prompt.meetings.dto.InviteUserRequest;
+import me.mourjo.prompt.meetings.dto.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -64,7 +62,7 @@ public class MeetingSchedulerIntegrationTests {
         // 5. Fail to create meeting without authentication header
         LocalDateTime start = LocalDateTime.of(2026, 8, 1, 10, 0);
         LocalDateTime end = LocalDateTime.of(2026, 8, 1, 11, 0);
-        CreateMeetingRequest meetingRequest = new CreateMeetingRequest("Project Sync", start, end, "Europe/Paris");
+        CreateMeetingRequest meetingRequest = new CreateMeetingRequest("Project Sync", start, end, "Europe/Paris", "default");
 
         mockMvc.perform(post("/meetings")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -90,12 +88,13 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(jsonPath("$.title", is("Project Sync")))
                 .andExpect(jsonPath("$.organizerUsername", is("alice")))
                 .andExpect(jsonPath("$.userStatus", is("ORGANIZER")))
+                .andExpect(jsonPath("$.calendarName", is("default")))
                 .andReturn().getResponse().getContentAsString();
 
         Long meetingId = objectMapper.readTree(meetingResponseJson).get("id").asLong();
 
         // 8. Fail to create meeting with invalid timezone
-        CreateMeetingRequest badTzRequest = new CreateMeetingRequest("Project Sync", start, end, "Invalid/Timezone");
+        CreateMeetingRequest badTzRequest = new CreateMeetingRequest("Project Sync", start, end, "Invalid/Timezone", "default");
         mockMvc.perform(post("/meetings")
                 .header("X-USERNAME", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -104,7 +103,7 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(jsonPath("$.message", containsString("Invalid timezone")));
 
         // 9. Fail to create meeting with start time after end time
-        CreateMeetingRequest badTimeRequest = new CreateMeetingRequest("Project Sync", end, start, "Europe/Paris");
+        CreateMeetingRequest badTimeRequest = new CreateMeetingRequest("Project Sync", end, start, "Europe/Paris", "default");
         mockMvc.perform(post("/meetings")
                 .header("X-USERNAME", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -137,16 +136,12 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message", containsString("Only the meeting organizer can invite")));
 
-
-
         // 14. View pending invitations for bob (received by current user)
         mockMvc.perform(get("/meetings/invitations/pending")
                 .header("X-USERNAME", "bob"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].meetingName", is("Project Sync")));
-
-
 
         // 16. Accept invite as Bob
         mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")
@@ -165,7 +160,8 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
-                .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")));
+                .andExpect(jsonPath("$[0].userStatus", is("ACCEPTED")))
+                .andExpect(jsonPath("$[0].calendarName", is("default")));
 
         // 19. View Alice's meetings (should show ORGANIZER)
         mockMvc.perform(get("/meetings")
@@ -173,6 +169,62 @@ public class MeetingSchedulerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id", is(meetingId.intValue())))
-                .andExpect(jsonPath("$[0].userStatus", is("ORGANIZER")));
+                .andExpect(jsonPath("$[0].userStatus", is("ORGANIZER")))
+                .andExpect(jsonPath("$[0].calendarName", is("default")));
+
+        // 20. Calendar workflow:
+        // Get calendars initially - should only have the seeded default calendar
+        mockMvc.perform(get("/calendars")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name", is("default")))
+                .andExpect(jsonPath("$[0].priority", is(1.0)));
+
+        // Create new calendar 'work' with priority 2.0
+        CreateCalendarRequest createWork = new CreateCalendarRequest("work", 2.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createWork)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name", is("work")))
+                .andExpect(jsonPath("$.priority", is(2.0)));
+
+        // Fail to create a calendar named 'default'
+        CreateCalendarRequest createDefaultDup = new CreateCalendarRequest("default", 3.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDefaultDup)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Cannot create or override the default calendar")));
+
+        // Fetch calendars again - should have both default and work
+        mockMvc.perform(get("/calendars")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].name", is("default")))
+                .andExpect(jsonPath("$[1].name", is("work")));
+
+        // Create a meeting in the new 'work' calendar
+        CreateMeetingRequest workMeeting = new CreateMeetingRequest("Design Workshop", start.plusDays(1), end.plusDays(1), "Europe/Paris", "work");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(workMeeting)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.title", is("Design Workshop")))
+                .andExpect(jsonPath("$.calendarName", is("work")));
+
+        // Fail to create a meeting in a non-existent calendar
+        CreateMeetingRequest invalidCalMeeting = new CreateMeetingRequest("Invalid Cal Meeting", start, end, "Europe/Paris", "non-existent-cal");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidCalMeeting)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("does not exist")));
     }
 }

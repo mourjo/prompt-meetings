@@ -9,5 +9,6 @@ public record MeetingResponse(
     LocalDateTime endTime,
     String timezone,
     String organizerUsername,
-    String userStatus
+    String userStatus,
+    String calendarName
 ) {}

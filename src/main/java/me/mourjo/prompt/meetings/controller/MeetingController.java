@@ -10,6 +10,7 @@ import me.mourjo.prompt.meetings.dto.*;
 import me.mourjo.prompt.meetings.exception.BadRequestException;
 import me.mourjo.prompt.meetings.exception.ForbiddenException;
 import me.mourjo.prompt.meetings.exception.NotFoundException;
+import me.mourjo.prompt.meetings.repository.CalendarRepository;
 import me.mourjo.prompt.meetings.repository.InvitationRepository;
 import me.mourjo.prompt.meetings.repository.MeetingRepository;
 import me.mourjo.prompt.meetings.repository.UserRepository;
@@ -27,16 +28,19 @@ public class MeetingController {
     private final MeetingRepository meetingRepository;
     private final InvitationRepository invitationRepository;
     private final UserRepository userRepository;
+    private final CalendarRepository calendarRepository;
     private final AuthService authService;
 
     public MeetingController(
             MeetingRepository meetingRepository,
             InvitationRepository invitationRepository,
             UserRepository userRepository,
+            CalendarRepository calendarRepository,
             AuthService authService) {
         this.meetingRepository = meetingRepository;
         this.invitationRepository = invitationRepository;
         this.userRepository = userRepository;
+        this.calendarRepository = calendarRepository;
         this.authService = authService;
     }
 
@@ -60,12 +64,17 @@ public class MeetingController {
             throw new BadRequestException("Invalid timezone: " + request.timezone());
         }
 
+        if (!calendarRepository.existsByName(request.calendarName())) {
+            throw new BadRequestException("Calendar '" + request.calendarName() + "' does not exist");
+        }
+
         Long meetingId = meetingRepository.save(
             request.title(),
             request.startTime(),
             request.endTime(),
             request.timezone(),
-            xUsername
+            xUsername,
+            request.calendarName()
         );
 
         return new MeetingResponse(
@@ -75,7 +84,8 @@ public class MeetingController {
             request.endTime(),
             request.timezone(),
             xUsername,
-            "ORGANIZER"
+            "ORGANIZER",
+            request.calendarName()
         );
     }
 
@@ -161,8 +171,6 @@ public class MeetingController {
         invitationRepository.updateStatus(meetingId, xUsername, "REJECTED");
     }
 
-
-
     @GetMapping("/meetings/invitations/pending")
     @Operation(summary = "View all pending invitations received by the current user")
     public List<PendingInvitationResponse> getMyPendingInvitations(
@@ -171,5 +179,33 @@ public class MeetingController {
 
         authService.authenticate(xUsername);
         return invitationRepository.findPendingInvitationsForUser(xUsername);
+    }
+
+    @PostMapping("/calendars")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Create a new calendar")
+    public CalendarResponse createCalendar(
+            @Parameter(in = ParameterIn.HEADER, name = "X-USERNAME", required = true, schema = @Schema(type = "string"))
+            @RequestHeader("X-USERNAME") String xUsername,
+            @Valid @RequestBody CreateCalendarRequest request) {
+
+        authService.authenticate(xUsername);
+
+        if ("default".equalsIgnoreCase(request.name())) {
+            throw new BadRequestException("Cannot create or override the default calendar");
+        }
+
+        calendarRepository.save(request.name(), request.priority());
+        return new CalendarResponse(request.name(), request.priority());
+    }
+
+    @GetMapping("/calendars")
+    @Operation(summary = "Fetch all calendars")
+    public List<CalendarResponse> getAllCalendars(
+            @Parameter(in = ParameterIn.HEADER, name = "X-USERNAME", required = true, schema = @Schema(type = "string"))
+            @RequestHeader("X-USERNAME") String xUsername) {
+
+        authService.authenticate(xUsername);
+        return calendarRepository.findAll();
     }
 }

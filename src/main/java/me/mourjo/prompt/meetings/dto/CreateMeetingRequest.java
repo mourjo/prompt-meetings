@@ -15,5 +15,8 @@ public record CreateMeetingRequest(
     LocalDateTime endTime,
 
     @NotBlank(message = "Timezone is required")
-    String timezone
+    String timezone,
+
+    @NotBlank(message = "Calendar name is required")
+    String calendarName
 ) {}

@@ -21,8 +21,8 @@ public class MeetingRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public Long save(String title, LocalDateTime startTime, LocalDateTime endTime, String timezone, String organizerUsername) {
-        String sql = "INSERT INTO meetings (title, start_time, end_time, timezone, organizer_username) VALUES (?, ?, ?, ?, ?)";
+    public Long save(String title, LocalDateTime startTime, LocalDateTime endTime, String timezone, String organizerUsername, String calendarName) {
+        String sql = "INSERT INTO meetings (title, start_time, end_time, timezone, organizer_username, calendar_name) VALUES (?, ?, ?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
 
         jdbcTemplate.update(connection -> {
@@ -32,6 +32,7 @@ public class MeetingRepository {
             ps.setTimestamp(3, Timestamp.valueOf(endTime));
             ps.setString(4, timezone);
             ps.setString(5, organizerUsername);
+            ps.setString(6, calendarName);
             return ps;
         }, keyHolder);
 
@@ -62,7 +63,7 @@ public class MeetingRepository {
 
     public List<MeetingResponse> findMeetingsForUser(String username) {
         String sql = """
-            SELECT m.id, m.title, m.start_time, m.end_time, m.timezone, m.organizer_username,
+            SELECT m.id, m.title, m.start_time, m.end_time, m.timezone, m.organizer_username, m.calendar_name,
                    CASE
                      WHEN m.organizer_username = ? THEN 'ORGANIZER'
                      ELSE i.status
@@ -80,7 +81,8 @@ public class MeetingRepository {
             rs.getTimestamp("end_time").toLocalDateTime(),
             rs.getString("timezone"),
             rs.getString("organizer_username"),
-            rs.getString("user_status")
+            rs.getString("user_status"),
+            rs.getString("calendar_name")
         ), username, username, username, username);
     }
 }
