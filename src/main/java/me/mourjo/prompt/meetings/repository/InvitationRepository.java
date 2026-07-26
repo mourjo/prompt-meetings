@@ -1,12 +1,9 @@
 package me.mourjo.prompt.meetings.repository;
 
-import me.mourjo.prompt.meetings.dto.PendingInvitationResponse;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,7 +49,7 @@ public class InvitationRepository {
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
-    public List<PendingInvitationResponse> findPendingInvitationsForUser(String username) {
+    public List<PendingInvitationInfo> findPendingInvitationsForUser(String username) {
         String sql = """
             SELECT m.id AS meeting_id, m.title AS meeting_name, m.organizer_username AS invited_by,
                    m.start_time, m.end_time, m.timezone
@@ -61,21 +58,13 @@ public class InvitationRepository {
             WHERE i.invitee_username = ? AND i.status = 'PENDING'
             ORDER BY m.start_time ASC
             """;
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            LocalDateTime start = rs.getTimestamp("start_time").toLocalDateTime();
-            LocalDateTime end = rs.getTimestamp("end_time").toLocalDateTime();
-            long durationMinutes = Duration.between(start, end).toMinutes();
-            String durationStr = durationMinutes + " minutes";
-            return new PendingInvitationResponse(
-                rs.getLong("meeting_id"),
-                rs.getString("meeting_name"),
-                rs.getString("invited_by"),
-                start,
-                end,
-                rs.getString("timezone"),
-                durationMinutes,
-                durationStr
-            );
-        }, username);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> new PendingInvitationInfo(
+            rs.getLong("meeting_id"),
+            rs.getString("meeting_name"),
+            rs.getString("invited_by"),
+            rs.getTimestamp("start_time").toLocalDateTime(),
+            rs.getTimestamp("end_time").toLocalDateTime(),
+            rs.getString("timezone")
+        ), username);
     }
 }

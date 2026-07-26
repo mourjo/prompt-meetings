@@ -1,7 +1,6 @@
 package me.mourjo.prompt.meetings.repository;
 
 import me.mourjo.prompt.meetings.dto.MeetingConflictCheck;
-import me.mourjo.prompt.meetings.dto.MeetingResponse;
 import me.mourjo.prompt.meetings.model.Meeting;
 import org.springframework.data.jdbc.repository.query.Query;
 import org.springframework.data.repository.ListCrudRepository;
@@ -25,7 +24,7 @@ public interface MeetingRepository extends ListCrudRepository<Meeting, Long> {
         WHERE i.invitee_username = :username AND i.status IN ('ACCEPTED', 'REJECTED')
         ORDER BY m.start_time ASC
         """)
-    List<MeetingResponse> findMeetingsForUser(@Param("username") String username);
+    List<UserMeetingInfo> findMeetingsForUser(@Param("username") String username);
 
     @Query("""
         SELECT m.id, m.title, m.start_time, m.end_time, m.timezone, m.calendar_name, c.priority AS calendar_priority
