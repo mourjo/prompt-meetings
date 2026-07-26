@@ -23,36 +23,20 @@ public class MeetingService {
     private final InvitationRepository invitationRepository;
     private final UserRepository userRepository;
     private final CalendarRepository calendarRepository;
-    private final AuthService authService;
 
     public MeetingService(
             MeetingRepository meetingRepository,
             InvitationRepository invitationRepository,
             UserRepository userRepository,
-            CalendarRepository calendarRepository,
-            AuthService authService) {
+            CalendarRepository calendarRepository) {
         this.meetingRepository = meetingRepository;
         this.invitationRepository = invitationRepository;
         this.userRepository = userRepository;
         this.calendarRepository = calendarRepository;
-        this.authService = authService;
     }
 
     @Transactional
     public MeetingResponse createMeeting(String xUsername, CreateMeetingRequest request) {
-        authService.authenticate(xUsername);
-
-        if (request.startTime().isAfter(request.endTime()) || request.startTime().isEqual(request.endTime())) {
-            throw new BadRequestException("Start time must be before end time");
-        }
-
-        ZoneId newZoneId;
-        try {
-            newZoneId = ZoneId.of(request.timezone());
-        } catch (Exception e) {
-            throw new BadRequestException("Invalid timezone: " + request.timezone());
-        }
-
         if (!calendarRepository.existsById(request.calendarName())) {
             throw new BadRequestException("Calendar '" + request.calendarName() + "' does not exist");
         }
@@ -60,6 +44,7 @@ public class MeetingService {
         Double p = calendarRepository.getPriority(request.calendarName());
         double newPriority = p != null ? p : 1.0;
 
+        ZoneId newZoneId = ZoneId.of(request.timezone());
         ZonedDateTime newStart = request.startTime().atZone(newZoneId);
         ZonedDateTime newEnd = request.endTime().atZone(newZoneId);
 
@@ -116,7 +101,6 @@ public class MeetingService {
     }
 
     public List<MeetingResponse> getMyMeetings(String xUsername) {
-        authService.authenticate(xUsername);
         return meetingRepository.findMeetingsForUser(xUsername).stream()
                 .map(m -> new MeetingResponse(
                     m.id(),
@@ -132,8 +116,6 @@ public class MeetingService {
     }
 
     public void inviteUser(String xUsername, Long meetingId, String inviteeUsername) {
-        authService.authenticate(xUsername);
-
         if (!meetingRepository.existsById(meetingId)) {
             throw new NotFoundException("Meeting not found with ID: " + meetingId);
         }
@@ -157,8 +139,6 @@ public class MeetingService {
     }
 
     public void acceptInvite(String xUsername, Long meetingId) {
-        authService.authenticate(xUsername);
-
         if (!meetingRepository.existsById(meetingId)) {
             throw new NotFoundException("Meeting not found with ID: " + meetingId);
         }
@@ -170,8 +150,6 @@ public class MeetingService {
     }
 
     public void rejectInvite(String xUsername, Long meetingId) {
-        authService.authenticate(xUsername);
-
         if (!meetingRepository.existsById(meetingId)) {
             throw new NotFoundException("Meeting not found with ID: " + meetingId);
         }
@@ -183,7 +161,6 @@ public class MeetingService {
     }
 
     public List<PendingInvitationResponse> getMyPendingInvitations(String xUsername) {
-        authService.authenticate(xUsername);
         return invitationRepository.findPendingInvitationsForUser(xUsername).stream()
                 .map(info -> {
                     long durationMinutes = Duration.between(info.startTime(), info.endTime()).toMinutes();

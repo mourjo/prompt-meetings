@@ -7,11 +7,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import me.mourjo.prompt.meetings.dto.*;
+import me.mourjo.prompt.meetings.exception.BadRequestException;
 import me.mourjo.prompt.meetings.service.CalendarService;
 import me.mourjo.prompt.meetings.service.MeetingService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.ZoneId;
 import java.util.List;
 
 @RestController
@@ -33,6 +35,17 @@ public class MeetingController {
             @Parameter(in = ParameterIn.HEADER, name = "X-USERNAME", required = true, schema = @Schema(type = "string"))
             @RequestHeader("X-USERNAME") String xUsername,
             @Valid @RequestBody CreateMeetingRequest request) {
+
+        if (request.startTime().isAfter(request.endTime()) || request.startTime().isEqual(request.endTime())) {
+            throw new BadRequestException("Start time must be before end time");
+        }
+
+        try {
+            ZoneId.of(request.timezone());
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid timezone: " + request.timezone());
+        }
+
         return meetingService.createMeeting(xUsername, request);
     }
 
@@ -88,6 +101,11 @@ public class MeetingController {
             @Parameter(in = ParameterIn.HEADER, name = "X-USERNAME", required = true, schema = @Schema(type = "string"))
             @RequestHeader("X-USERNAME") String xUsername,
             @Valid @RequestBody CreateCalendarRequest request) {
+
+        if ("default".equalsIgnoreCase(request.name())) {
+            throw new BadRequestException("Cannot create or override the default calendar");
+        }
+
         return calendarService.createCalendar(xUsername, request.name(), request.priority());
     }
 
