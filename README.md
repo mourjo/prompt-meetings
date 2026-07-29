@@ -16,12 +16,12 @@ Unlike traditional testing, which relies on manually writing individual test cas
 
 ## Branches
 The repository is designed to demonstrate property-based tests. We aim to identify test failures that would otherwise go unnoticed - the unknown unknowns. To do this, contains the following branches are used to develop the features and go one-by-one uncovering faults that went unnoticed. Move around to see the important role PBT plays:
-- **[basic-features](https://github.com/mourjo/prompt-meetings/tree/basic-features)**: Contains application features before adding property-based tests.
-- **[pbt-10-invariant-no-user-can-be-in-two-meetings](https://github.com/mourjo/prompt-meetings/tree/pbt-10-invariant-no-user-can-be-in-two-meetings)**: Introduces property-based tests verifying users are not in overlapping accepted meetings.
-- **[pbt-20-disallow-rejection-when-accepted](https://github.com/mourjo/prompt-meetings/tree/pbt-20-disallow-rejection-when-accepted)**: Restricts accepting invitations to only those currently in a pending state.
-- **[pbt-30-accept-and-auto-reject](https://github.com/mourjo/prompt-meetings/tree/pbt-30-accept-and-auto-reject)**: Implements calendar priority-based conflict resolution when users accept invitations.
-- **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
-- **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites)**: Prevents users from rejecting invitations that are not in a pending state.
+- **[basic-features](https://github.com/mourjo/prompt-meetings/tree/basic-features#branches)**: Contains application features before adding property-based tests.
+- **[pbt-10-invariant-no-user-can-be-in-two-meetings](https://github.com/mourjo/prompt-meetings/tree/pbt-10-invariant-no-user-can-be-in-two-meetings#branches)**: Introduces property-based tests verifying users are not in overlapping accepted meetings.
+- **[pbt-20-disallow-rejection-when-accepted](https://github.com/mourjo/prompt-meetings/tree/pbt-20-disallow-rejection-when-accepted#branches)**: Restricts accepting invitations to only those currently in a pending state.
+- **[pbt-30-accept-and-auto-reject](https://github.com/mourjo/prompt-meetings/tree/pbt-30-accept-and-auto-reject#branches)**: Implements calendar priority-based conflict resolution when users accept invitations.
+- **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified#branches)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
+- **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites#branches)**: Prevents users from rejecting invitations that are not in a pending state.
 
 ## Failing test
 In this branch, the following test fails - here is an output, PBT shrinks failures so that they are self-explanatory.
