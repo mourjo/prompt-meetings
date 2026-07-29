@@ -65,7 +65,6 @@ public class MeetingSchedulerPropertyTests {
         return start1.isBefore(end2) && start2.isBefore(end1);
     }
 
-    @Disabled
     @Property
     void noOverlappingMeetingsForAnyUser(@ForAll("actions") ActionChain<CalendarMeetingsState> chain) {
         chain.withInvariant("no-overlap", sut -> {
