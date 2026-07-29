@@ -1,14 +1,11 @@
-# Prompt Meetings (letsmeet)
+# Prompt Meetings
+This is an online API for creating and managing meetings. It allows users to register, create and manage meetings, send invitations, track responses, and coordinate calendar schedules within an organization.
 
-## Goal
-The Prompt Meetings application is a meeting scheduler and coordination platform. It allows users to register, create and manage meetings, send invitations, track responses, and coordinate calendar schedules within an organization.
+Unlike traditional testing, which relies on manually writing individual test cases, this project uses property-based testing to uncover subtle bugs. Vibe-coded, this project highlights the need for property-based tests more than ever.
 
-## Entities
-The platform defines three primary entities:
-- **User**: Represented by a unique username. All scheduling operations are tied to a registered user.
-- **Meeting**: A scheduled event with a title, localized start and end times, a timezone identifier, and a designated user as the Organizer (owner).
-- **Invitation**: An association between a Meeting and a User representing a request for attendance. It tracks response status as either pending, confirmed (accepted), or declined (rejected). Creating a meeting automatically registers an accepted invitation for the organizer, allowing them to reject their own meeting later while others can still attend.
-- **Calendar**: A global, shared schedule container identified by a unique name. Calendars have priorities represented by a floating point number. A built-in default calendar named `"default"` with priority `1.0` is always present.
+<p align="center">
+<img src="src/test/resources/bug.png" width="600">
+</p>
 
 ## Capabilities
 - **User Management**: Support for creating new users with unique usernames and retrieving the directory of all registered users.
