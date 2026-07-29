@@ -47,6 +47,6 @@ To run the application locally:
 To run the automated suite of integration and unit tests:
 1. Execute the Maven test task:
    ```bash
-   ./mvnw clean test
+   rm -f .jqwik-database && ./mvnw clean test
    ```
 2. When tests are executed, the system automatically overrides the database configuration to use a transient, in-memory H2 database instance (`jdbc:h2:mem:meetingsdb`). This ensures tests are isolated, fast, and do not mutate the local on-disk database.
