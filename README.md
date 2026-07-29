@@ -17,6 +17,15 @@ The platform defines three primary entities:
 - **Invitation Management**: Allowing meeting organizers to invite other registered users to their meetings. Allowing invitees to accept or reject pending invitations, and enabling users to inspect their pending invitations.
 - **API Documentation**: Automatic interactive documentation of the application through a Swagger/OpenAPI UI.
 
+## Branches
+The repository is designed to demonstrate property-based tests. We aim to identify test failures that would otherwise go unnoticed - the unknown unknowns. To do this, contains the following branches are used to develop the features and go one-by-one uncovering faults that went unnoticed. Move around to see the important role PBT plays:
+- **[basic-features](https://github.com/mourjo/prompt-meetings/tree/basic-features)**: Contains application features before adding property-based tests.
+- **[pbt-10-invariant-no-user-can-be-in-two-meetings](https://github.com/mourjo/prompt-meetings/tree/pbt-10-invariant-no-user-can-be-in-two-meetings)**: Introduces property-based tests verifying users are not in overlapping accepted meetings.
+- **[pbt-20-disallow-rejection-when-accepted](https://github.com/mourjo/prompt-meetings/tree/pbt-20-disallow-rejection-when-accepted)**: Restricts accepting invitations to only those currently in a pending state.
+- **[pbt-30-accept-and-auto-reject](https://github.com/mourjo/prompt-meetings/tree/pbt-30-accept-and-auto-reject)**: Implements calendar priority-based conflict resolution when users accept invitations.
+- **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
+- **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites)**: Prevents users from rejecting invitations that are not in a pending state.
+
 ## How to Run the System
 To run the application locally:
 1. Ensure you have Java 25 or later installed.
@@ -37,13 +46,4 @@ To run the automated suite of integration and unit tests:
    ./mvnw clean test
    ```
 2. When tests are executed, the system automatically overrides the database configuration to use a transient, in-memory H2 database instance (`jdbc:h2:mem:meetingsdb`). This ensures tests are isolated, fast, and do not mutate the local on-disk database.
-
-## Development Branches
-The repository contains the following branches centered around property-based testing and features:
-- **[basic-features](https://github.com/mourjo/prompt-meetings/tree/basic-features)**: Contains core application features before adding property-based tests.
-- **[pbt-10-invariant-no-user-can-be-in-two-meetings](https://github.com/mourjo/prompt-meetings/tree/pbt-10-invariant-no-user-can-be-in-two-meetings)**: Introduces property-based tests verifying users are not in overlapping accepted meetings.
-- **[pbt-20-disallow-rejection-when-accepted](https://github.com/mourjo/prompt-meetings/tree/pbt-20-disallow-rejection-when-accepted)**: Restricts accepting invitations to only those currently in a pending state.
-- **[pbt-30-accept-and-auto-reject](https://github.com/mourjo/prompt-meetings/tree/pbt-30-accept-and-auto-reject)**: Implements calendar priority-based conflict resolution when users accept invitations.
-- **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
-- **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites)**: Prevents users from rejecting invitations that are not in a pending state.
 
