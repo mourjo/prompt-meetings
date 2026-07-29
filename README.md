@@ -23,6 +23,20 @@ The repository is designed to demonstrate property-based tests. We aim to identi
 - **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
 - **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites)**: Prevents users from rejecting invitations that are not in a pending state.
 
+## Failing test
+In this branch, the following test fails - here is an output, PBT shrinks failures so that they are self-explanatory. Auto rejections are not transitive: if a meeting X should auto-reject another meeting Y, and Y should auto-reject another meeting Z, it does not necessarily mean that X should auto reject Z.  
+
+```
+MeetingSchedulerPropertyTests.autoRejectedMeetingsHaveHigherPriorityAcceptedOverlap:130->lambda$autoRejectedMeetingsHaveHigherPriorityAcceptedOverlap$0:125 Invariant 'auto-rejected-invariant' failed after the following actions: [
+    user2 creates Meeting-1 in calendar default (UTC) from 10:00 to 10:01
+    user2 creates Meeting-3 in calendar medium (UTC) from 10:00 to 10:02
+    user2 creates Meeting-6 in calendar high (UTC) from 10:01 to 10:02
+]
+final state: me.mourjo.prompt.meetings.MeetingSchedulerPropertyTests$CalendarMeetingsState@35e92a7
+User user2 has an AUTO_REJECTED meeting 'Meeting-1' (priority 1.000000) but no overlapping ACCEPTED meeting with a higher priority
+```
+
+
 ## How to Run the System
 To run the application locally:
 1. Ensure you have Java 25 or later installed.
