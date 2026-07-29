@@ -23,6 +23,19 @@ The repository is designed to demonstrate property-based tests. We aim to identi
 - **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
 - **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites)**: Prevents users from rejecting invitations that are not in a pending state.
 
+## Failing test
+In this branch, the following test fails - here is an output, PBT shrinks failures so that they are self-explanatory. A user should not need to accept their own meeting.
+
+```
+MeetingSchedulerPropertyTests.noOverlappingMeetingsForAnyUser:90->lambda$noOverlappingMeetingsForAnyUser$0:80 Invariant 'no-overlap' failed after the following actions: [
+    user2 creates Meeting-1 in calendar default (UTC) from 10:00 to 10:01
+    user2 creates Meeting-3 in calendar medium (UTC) from 10:00 to 10:01
+    user2 accepts invitation to meeting Meeting-1
+]
+final state: me.mourjo.prompt.meetings.MeetingSchedulerPropertyTests$CalendarMeetingsState@2b569f08
+User user2 is in overlapping meetings: Meeting-1 [10:00 - 10:01] and Meeting-3 [10:00 - 10:01]
+```
+
 ## How to Run the System
 To run the application locally:
 1. Ensure you have Java 25 or later installed.
