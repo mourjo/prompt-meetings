@@ -23,6 +23,13 @@ The repository is designed to demonstrate property-based tests. We aim to identi
 - **[pbt-40-invariant-auto-rejections-should-be-justified](https://github.com/mourjo/prompt-meetings/tree/pbt-40-invariant-auto-rejections-should-be-justified)**: Distinguishes system auto-rejections and verifies they overlap with higher-priority meetings.
 - **[pbt-50-rejection-allowed-only-for-pending-invites](https://github.com/mourjo/prompt-meetings/tree/pbt-50-rejection-allowed-only-for-pending-invites)**: Prevents users from rejecting invitations that are not in a pending state.
 
+
+## Failing test
+In this branch, there is no failing test, so the property holds: No user is in two meetings at the same time.
+
+The changes that fixed the [previous failing case](https://github.com/mourjo/prompt-meetings/tree/pbt-20-disallow-rejection-when-accepted) are [here](https://github.com/mourjo/prompt-meetings/compare/pbt-20-disallow-rejection-when-accepted...pbt-30-accept-and-auto-reject).
+
+
 ## How to Run the System
 To run the application locally:
 1. Ensure you have Java 25 or later installed.
