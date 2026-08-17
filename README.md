@@ -15,7 +15,7 @@ Unlike traditional testing, which relies on manually writing individual test cas
 - **API Documentation**: Automatic interactive documentation of the application through a Swagger/OpenAPI UI.
 
 ## Branches
-The repository is designed to demonstrate property-based tests. We aim to identify test failures that would otherwise go unnoticed - the unknown unknowns. To do this, contains the following branches are used to develop the features and go one-by-one uncovering faults that went unnoticed. Move around to see the important role PBT plays:
+The repository is designed to demonstrate property-based tests. The aim is to identify failure paths that are complicated enough to go unnoticed, even by AI. The following branches are used to develop features and uncover faults that went undetected while vibe-coding. Move around to see the important role PBT plays:
 - **[basic-features](https://github.com/mourjo/prompt-meetings/tree/basic-features#branches)**: Contains application features before adding property-based tests.
 - **[pbt-10-invariant-no-user-can-be-in-two-meetings](https://github.com/mourjo/prompt-meetings/tree/pbt-10-invariant-no-user-can-be-in-two-meetings#branches)**: Introduces property-based tests verifying users are not in overlapping accepted meetings.
 - **[pbt-20-disallow-rejection-when-accepted](https://github.com/mourjo/prompt-meetings/tree/pbt-20-disallow-rejection-when-accepted#branches)**: Restricts accepting invitations to only those currently in a pending state.
