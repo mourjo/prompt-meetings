@@ -1,17 +1,21 @@
 package me.mourjo.prompt.meetings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import me.mourjo.prompt.meetings.dto.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -24,8 +28,56 @@ public class MeetingSchedulerIntegrationTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            .registerModule(new JavaTimeModule());
+
+    @BeforeEach
+    public void setUp() {
+        jdbcTemplate.execute("DELETE FROM invitations");
+        jdbcTemplate.execute("DELETE FROM meetings");
+        jdbcTemplate.execute("DELETE FROM users");
+        jdbcTemplate.execute("DELETE FROM calendars WHERE name <> 'default'");
+    }
+
+    private void createUser(String username) throws Exception {
+        CreateUserRequest request = new CreateUserRequest(username);
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
+
+    private void createCalendar(String username, String name, double priority) throws Exception {
+        CreateCalendarRequest request = new CreateCalendarRequest(name, priority);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", username)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
+
+    private Long createMeeting(String username, String title, LocalDateTime start, LocalDateTime end, String tz, String cal) throws Exception {
+        CreateMeetingRequest request = new CreateMeetingRequest(title, start, end, tz, cal);
+        String responseJson = mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", username)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(responseJson).get("id").asLong();
+    }
+
+    private void inviteUser(String username, Long meetingId, String invitee) throws Exception {
+        InviteUserRequest request = new InviteUserRequest(invitee);
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites")
+                .header("X-USERNAME", username)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
 
     @Test
     public void testCompleteWorkflow() throws Exception {
@@ -494,5 +546,490 @@ public class MeetingSchedulerIntegrationTests {
                 .header("X-USERNAME", "bob"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("Conflict with meeting")));
+    }
+
+    @Test
+    public void testUserValidationAndBoundaryConditions() throws Exception {
+        // Blank username
+        CreateUserRequest blankUser = new CreateUserRequest("");
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(blankUser)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // Username shorter than 3 characters
+        CreateUserRequest shortUser = new CreateUserRequest("al");
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(shortUser)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("between 3 and 50")));
+
+        // Username longer than 50 characters
+        String longUsernameStr = "a".repeat(51);
+        CreateUserRequest longUser = new CreateUserRequest(longUsernameStr);
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(longUser)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("between 3 and 50")));
+
+        // Valid boundary usernames (3 chars and 50 chars)
+        createUser("abc");
+        createUser("a".repeat(50));
+
+        // Get all users sorted alphabetically
+        mockMvc.perform(get("/users"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].username", is("a".repeat(50))))
+                .andExpect(jsonPath("$[1].username", is("abc")));
+    }
+
+    @Test
+    public void testAuthenticationAndAuthorizationHeaderValidation() throws Exception {
+        createUser("alice");
+        LocalDateTime start = LocalDateTime.of(2026, 8, 10, 10, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 8, 10, 11, 0);
+        CreateMeetingRequest meetingRequest = new CreateMeetingRequest("Team Sync", start, end, "UTC", "default");
+
+        // 1. Missing header on /meetings
+        mockMvc.perform(get("/meetings"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message", containsString("X-USERNAME")));
+
+        // 2. Blank header on /meetings
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "   "))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message", containsString("missing or empty")));
+
+        // 3. Missing header on /calendars
+        mockMvc.perform(get("/calendars"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message", containsString("X-USERNAME")));
+
+        // 4. Missing header on /meetings/invitations/pending
+        mockMvc.perform(get("/meetings/invitations/pending"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message", containsString("X-USERNAME")));
+
+        // 5. Unregistered user header
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "unknown_user"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message", containsString("not registered")));
+    }
+
+    @Test
+    public void testCalendarManagementValidationAndDuplicates() throws Exception {
+        createUser("alice");
+
+        // 1. Fetch initial calendars - default exists with priority 1.0
+        mockMvc.perform(get("/calendars")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name", is("default")))
+                .andExpect(jsonPath("$[0].priority", is(1.0)));
+
+        // 2. Validation error: blank calendar name
+        CreateCalendarRequest blankNameCal = new CreateCalendarRequest("", 2.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(blankNameCal)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // 3. Validation error: null priority
+        CreateCalendarRequest nullPriorityCal = new CreateCalendarRequest("personal", null);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(nullPriorityCal)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // 4. Create custom calendars
+        createCalendar("alice", "work", 2.0);
+        createCalendar("alice", "urgent", 5.0);
+        createCalendar("alice", "personal", 0.5);
+
+        // 5. Fail to create duplicate custom calendar (work already exists)
+        CreateCalendarRequest dupWork = new CreateCalendarRequest("work", 3.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dupWork)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Calendar already exists with name: work")));
+
+        // 6. Fail to override default calendar (case-insensitive "DEFAULT")
+        CreateCalendarRequest dupDefault = new CreateCalendarRequest("DEFAULT", 10.0);
+        mockMvc.perform(post("/calendars")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dupDefault)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Cannot create or override the default calendar")));
+
+        // 7. Verify calendars are sorted by priority ASC, name ASC
+        mockMvc.perform(get("/calendars")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(4)))
+                .andExpect(jsonPath("$[0].name", is("personal")))
+                .andExpect(jsonPath("$[0].priority", is(0.5)))
+                .andExpect(jsonPath("$[1].name", is("default")))
+                .andExpect(jsonPath("$[1].priority", is(1.0)))
+                .andExpect(jsonPath("$[2].name", is("work")))
+                .andExpect(jsonPath("$[2].priority", is(2.0)))
+                .andExpect(jsonPath("$[3].name", is("urgent")))
+                .andExpect(jsonPath("$[3].priority", is(5.0)));
+    }
+
+    @Test
+    public void testMeetingRequestValidationAndNotFoundExceptions() throws Exception {
+        createUser("alice");
+        createUser("bob");
+        LocalDateTime start = LocalDateTime.of(2026, 8, 15, 10, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 8, 15, 11, 0);
+
+        // 1. Validation error: blank title
+        CreateMeetingRequest blankTitle = new CreateMeetingRequest("", start, end, "UTC", "default");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(blankTitle)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // 2. Validation error: null start time
+        CreateMeetingRequest nullStart = new CreateMeetingRequest("Title", null, end, "UTC", "default");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(nullStart)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // 3. Validation error: null end time
+        CreateMeetingRequest nullEnd = new CreateMeetingRequest("Title", start, null, "UTC", "default");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(nullEnd)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // 4. Equal start and end time (duration 0)
+        CreateMeetingRequest zeroDuration = new CreateMeetingRequest("Title", start, start, "UTC", "default");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(zeroDuration)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Start time must be before end time")));
+
+        // 5. Non-existent meeting ID operations (NotFoundException -> 404 NOT_FOUND)
+        Long nonExistentMeetingId = 999999L;
+
+        // Invite to non-existent meeting
+        mockMvc.perform(post("/meetings/" + nonExistentMeetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("bob"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message", containsString("Meeting not found with ID: " + nonExistentMeetingId)));
+
+        // Accept non-existent meeting
+        mockMvc.perform(post("/meetings/" + nonExistentMeetingId + "/invites/accept")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message", containsString("Meeting not found with ID: " + nonExistentMeetingId)));
+
+        // Reject non-existent meeting
+        mockMvc.perform(post("/meetings/" + nonExistentMeetingId + "/invites/reject")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message", containsString("Meeting not found with ID: " + nonExistentMeetingId)));
+    }
+
+    @Test
+    public void testInvitationValidationAndForbiddenCases() throws Exception {
+        createUser("alice");
+        createUser("bob");
+        createUser("charlie");
+        LocalDateTime start = LocalDateTime.of(2026, 8, 20, 10, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 8, 20, 11, 0);
+
+        Long meetingId = createMeeting("alice", "Architecture Review", start, end, "UTC", "default");
+
+        // 1. Validation error: blank invitee username
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest(""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Validation failed")));
+
+        // 2. Organizer invites themselves
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("alice"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Organizer cannot invite themselves")));
+
+        // 3. Organizer invites Bob successfully
+        inviteUser("alice", meetingId, "bob");
+
+        // 4. Duplicate invitation (invite Bob again)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new InviteUserRequest("bob"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("already invited")));
+
+        // 5. Charlie is not invited -> Charlie attempts to accept (403 Forbidden)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/accept")
+                .header("X-USERNAME", "charlie"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message", containsString("Only an invited member can respond")));
+
+        // 6. Charlie is not invited -> Charlie attempts to reject (403 Forbidden)
+        mockMvc.perform(post("/meetings/" + meetingId + "/invites/reject")
+                .header("X-USERNAME", "charlie"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message", containsString("Only an invited member can respond")));
+    }
+
+    @Test
+    public void testPendingInvitationsCalculationAndSorting() throws Exception {
+        createUser("alice");
+        createUser("bob");
+
+        LocalDateTime time1 = LocalDateTime.of(2026, 9, 10, 14, 0);
+        LocalDateTime time2 = LocalDateTime.of(2026, 9, 10, 9, 0);
+        LocalDateTime time3 = LocalDateTime.of(2026, 9, 10, 11, 0);
+
+        Long m1 = createMeeting("alice", "Late Meeting", time1, time1.plusMinutes(90), "UTC", "default");
+        Long m2 = createMeeting("alice", "Early Meeting", time2, time2.plusMinutes(45), "UTC", "default");
+        Long m3 = createMeeting("alice", "Mid Meeting", time3, time3.plusMinutes(60), "UTC", "default");
+
+        inviteUser("alice", m1, "bob");
+        inviteUser("alice", m2, "bob");
+        inviteUser("alice", m3, "bob");
+
+        // View pending invitations - should be sorted chronologically (m2 at 9:00, m3 at 11:00, m1 at 14:00)
+        mockMvc.perform(get("/meetings/invitations/pending")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$[0].meetingId", is(m2.intValue())))
+                .andExpect(jsonPath("$[0].meetingName", is("Early Meeting")))
+                .andExpect(jsonPath("$[0].invitedBy", is("alice")))
+                .andExpect(jsonPath("$[0].durationMinutes", is(45)))
+                .andExpect(jsonPath("$[0].duration", is("45 minutes")))
+                .andExpect(jsonPath("$[1].meetingId", is(m3.intValue())))
+                .andExpect(jsonPath("$[1].durationMinutes", is(60)))
+                .andExpect(jsonPath("$[1].duration", is("60 minutes")))
+                .andExpect(jsonPath("$[2].meetingId", is(m1.intValue())))
+                .andExpect(jsonPath("$[2].durationMinutes", is(90)))
+                .andExpect(jsonPath("$[2].duration", is("90 minutes")));
+
+        // Bob accepts m2
+        mockMvc.perform(post("/meetings/" + m2 + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk());
+
+        // Bob rejects m3
+        mockMvc.perform(post("/meetings/" + m3 + "/invites/reject")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk());
+
+        // Pending list now only contains m1
+        mockMvc.perform(get("/meetings/invitations/pending")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].meetingId", is(m1.intValue())));
+    }
+
+    @Test
+    public void testConflictResolutionOnMeetingCreationAndAutoRejection() throws Exception {
+        createUser("alice");
+
+        createCalendar("alice", "low", 1.0);
+        createCalendar("alice", "medium", 2.0);
+        createCalendar("alice", "high", 3.0);
+
+        LocalDateTime start = LocalDateTime.of(2026, 11, 1, 10, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 11, 1, 11, 0);
+
+        // 1. Create meeting M_med in medium calendar (priority 2.0)
+        Long mMedId = createMeeting("alice", "Medium Meeting", start, end, "UTC", "medium");
+
+        // 2. Attempt to create conflicting meeting in medium calendar (priority 2.0 >= 2.0) -> fails
+        CreateMeetingRequest mSame = new CreateMeetingRequest("Same Priority", start.plusMinutes(15), end.plusMinutes(15), "UTC", "medium");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mSame)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting 'Medium Meeting' in calendar 'medium' (priority: 2.0 >= 2.0)")));
+
+        // 3. Attempt to create conflicting meeting in low calendar (priority 1.0 < 2.0) -> fails
+        CreateMeetingRequest mLow = new CreateMeetingRequest("Low Priority", start.plusMinutes(15), end.plusMinutes(15), "UTC", "low");
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mLow)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting 'Medium Meeting' in calendar 'medium' (priority: 2.0 >= 1.0)")));
+
+        // 4. Create conflicting meeting in high calendar (priority 3.0 > 2.0) -> succeeds and auto-rejects M_med
+        Long mHighId = createMeeting("alice", "High Priority", start.plusMinutes(15), end.plusMinutes(15), "UTC", "high");
+
+        // 5. Verify M_med is AUTO_REJECTED and M_high is ACCEPTED
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + mMedId + ")].userStatus", contains("AUTO_REJECTED")))
+                .andExpect(jsonPath("$[?(@.id == " + mHighId + ")].userStatus", contains("ACCEPTED")));
+
+        // 6. Create non-conflicting meeting in low calendar (adjacent: 11:15 - 12:15) -> succeeds
+        Long mAdjacentId = createMeeting("alice", "Adjacent Low Priority", end.plusMinutes(15), end.plusMinutes(75), "UTC", "low");
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + mAdjacentId + ")].userStatus", contains("ACCEPTED")));
+    }
+
+    @Test
+    public void testConflictResolutionOnAcceptingInvitations() throws Exception {
+        createUser("alice");
+        createUser("bob");
+        createUser("charlie");
+
+        createCalendar("alice", "low", 1.0);
+        createCalendar("charlie", "high", 3.0);
+        createCalendar("alice", "med", 2.0);
+
+        LocalDateTime start = LocalDateTime.of(2026, 12, 1, 14, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 12, 1, 15, 0);
+
+        // Alice creates low priority meeting and invites Bob
+        Long mLow = createMeeting("alice", "Alice Low", start, end, "UTC", "low");
+        inviteUser("alice", mLow, "bob");
+
+        // Bob accepts M_low -> Bob's status is ACCEPTED
+        mockMvc.perform(post("/meetings/" + mLow + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk());
+
+        // Charlie creates high priority meeting at overlapping time and invites Bob
+        Long mHigh = createMeeting("charlie", "Charlie High", start.plusMinutes(15), end.plusMinutes(15), "UTC", "high");
+        inviteUser("charlie", mHigh, "bob");
+
+        // Bob accepts M_high -> succeeds, Bob's M_low becomes AUTO_REJECTED, M_high is ACCEPTED
+        mockMvc.perform(post("/meetings/" + mHigh + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/meetings")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + mLow + ")].userStatus", contains("AUTO_REJECTED")))
+                .andExpect(jsonPath("$[?(@.id == " + mHigh + ")].userStatus", contains("ACCEPTED")));
+
+        // Alice creates med priority meeting at overlapping time and invites Bob
+        Long mMed = createMeeting("alice", "Alice Med", start.plusMinutes(20), end.plusMinutes(20), "UTC", "med");
+        inviteUser("alice", mMed, "bob");
+
+        // Bob tries to accept M_med -> blocked due to conflict with M_high (3.0 >= 2.0)
+        mockMvc.perform(post("/meetings/" + mMed + "/invites/accept")
+                .header("X-USERNAME", "bob"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting 'Charlie High' in calendar 'high' (priority: 3.0 >= 2.0)")));
+    }
+
+    @Test
+    public void testTimezoneAwareOverlaps() throws Exception {
+        createUser("alice");
+        createCalendar("alice", "high", 5.0);
+
+        // Meeting 1: 15:00 - 16:00 in Tokyo (Asia/Tokyo is UTC+9, so 06:00 - 07:00 UTC)
+        LocalDateTime tokyoStart = LocalDateTime.of(2026, 9, 15, 15, 0);
+        LocalDateTime tokyoEnd = LocalDateTime.of(2026, 9, 15, 16, 0);
+        Long tokyoMeeting = createMeeting("alice", "Tokyo Sync", tokyoStart, tokyoEnd, "Asia/Tokyo", "high");
+
+        // Meeting 2: 06:30 - 07:30 in London (Europe/London in Sept is BST = UTC+1, so 05:30 - 06:30 UTC)
+        // At 06:30 BST, it is 05:30 UTC -> ends at 06:30 UTC. Overlaps with 06:00 - 07:00 UTC (Tokyo Sync)!
+        LocalDateTime londonStart = LocalDateTime.of(2026, 9, 15, 6, 30);
+        LocalDateTime londonEnd = LocalDateTime.of(2026, 9, 15, 7, 30);
+        CreateMeetingRequest londonRequest = new CreateMeetingRequest("London Sync", londonStart, londonEnd, "Europe/London", "high");
+
+        mockMvc.perform(post("/meetings")
+                .header("X-USERNAME", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(londonRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Conflict with meeting 'Tokyo Sync'")));
+    }
+
+    @Test
+    public void testEntityModelGettersAndSetters() {
+        me.mourjo.prompt.meetings.model.Calendar cal1 = new me.mourjo.prompt.meetings.model.Calendar();
+        cal1.setName("test-cal");
+        cal1.setPriority(4.5);
+        assertEquals("test-cal", cal1.getName());
+        assertEquals(4.5, cal1.getPriority());
+
+        me.mourjo.prompt.meetings.model.Calendar cal2 = new me.mourjo.prompt.meetings.model.Calendar("work", 2.0);
+        assertEquals("work", cal2.getName());
+        assertEquals(2.0, cal2.getPriority());
+
+        LocalDateTime now = LocalDateTime.now();
+        me.mourjo.prompt.meetings.model.Meeting meeting = new me.mourjo.prompt.meetings.model.Meeting();
+        meeting.setId(100L);
+        meeting.setTitle("Test Title");
+        meeting.setStartTime(now);
+        meeting.setEndTime(now.plusHours(1));
+        meeting.setTimezone("UTC");
+        meeting.setOrganizerUsername("alice");
+        meeting.setCalendarName("default");
+
+        assertEquals(100L, meeting.getId());
+        assertEquals("Test Title", meeting.getTitle());
+        assertEquals(now, meeting.getStartTime());
+        assertEquals(now.plusHours(1), meeting.getEndTime());
+        assertEquals("UTC", meeting.getTimezone());
+        assertEquals("alice", meeting.getOrganizerUsername());
+        assertEquals("default", meeting.getCalendarName());
+    }
+
+    @Test
+    public void testGlobalExceptionHandlerDirectly() {
+        me.mourjo.prompt.meetings.exception.GlobalExceptionHandler handler = new me.mourjo.prompt.meetings.exception.GlobalExceptionHandler();
+
+        var genericRes = handler.handleGeneric(new RuntimeException("Unexpected error"));
+        assertEquals(500, genericRes.getStatusCode().value());
+        assertEquals("Unexpected error", genericRes.getBody().get("message"));
+
+        var notFoundRes = handler.handleNotFound(new me.mourjo.prompt.meetings.exception.NotFoundException("Not found"));
+        assertEquals(404, notFoundRes.getStatusCode().value());
+
+        var badReqRes = handler.handleBadRequest(new me.mourjo.prompt.meetings.exception.BadRequestException("Bad req"));
+        assertEquals(400, badReqRes.getStatusCode().value());
+
+        var unauthRes = handler.handleUnauthorized(new me.mourjo.prompt.meetings.exception.UnauthorizedException("Unauth"));
+        assertEquals(401, unauthRes.getStatusCode().value());
+
+        var forbiddenRes = handler.handleForbidden(new me.mourjo.prompt.meetings.exception.ForbiddenException("Forbidden"));
+        assertEquals(403, forbiddenRes.getStatusCode().value());
     }
 }
